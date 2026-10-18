@@ -434,14 +434,14 @@ function togglePlanEx(id){
 }
 function openPlanEditor(){
   const bl=blockMins();
-  openSheet(()=>{const b=(DB.cfg.bl||MINS_BL[DB.cfg.mins]||MINS_BL[20]).slice();
+  openSheet(()=>{const b=(DB.cfg.bl||goalMins(goalsOf(),DB.cfg.mins)).slice();
     return{title:'Ajustar mi práctica',body:'<div class="pad stack"><p class="sb l2 center" style="padding:0 10px">Minutos de cada bloque. Los ejercicios los eliges en cada uno, con «En mi práctica».</p>'+
       BLOCKS.map((B,i)=>'<div class="card row" style="padding:10px 10px 10px 18px;background:var(--sheet2)"><span class="bd grow">'+B.n+'</span><button class="mini" style="background:var(--fill2)" onclick="blAdj('+i+',-1)" aria-label="Menos">'+ic('minus',16,2.4)+'</button><span class="t3 num" style="min-width:64px;text-align:center">'+b[i]+' <span class="fn l2">min</span></span><button class="mini" style="background:var(--fill2)" onclick="blAdj('+i+',1)" aria-label="Más">'+ic('plus',16,2.4)+'</button></div>').join('')+
       '<p class="fn l2 center">Total: '+b.reduce((x,y)=>x+y,0)+' min</p>'+
-      '<button class="btn sec" onclick="DB.cfg.bl=null;DB.plan=proposePlan(DB.profile.goal,DB.profile.lvl,DB.cfg.mins);save();drawSheet();render();toast(\'Práctica propuesta restaurada\')">Volver a la práctica propuesta</button></div>'}});
+      '<button class="btn sec" onclick="DB.cfg.bl=null;DB.plan=proposePlan(goalsOf(),DB.profile.lvl,DB.cfg.mins);save();drawSheet();render();toast(\'Práctica propuesta restaurada\')">Volver a la práctica propuesta</button></div>'}});
   void bl;
 }
-function blAdj(i,d){const b=(DB.cfg.bl||MINS_BL[DB.cfg.mins]||MINS_BL[20]).slice();b[i]=Math.max(0,Math.min(60,b[i]+d));DB.cfg.bl=b;save();drawSheet();render()}
+function blAdj(i,d){const b=(DB.cfg.bl||goalMins(goalsOf(),DB.cfg.mins)).slice();b[i]=Math.max(0,Math.min(60,b[i]+d));DB.cfg.bl=b;save();drawSheet();render()}
 let CX=null;
 function openCustomEx(id){
   const e=id?DB.cex[id]:null;CX={id:id||null,n:e?e.n:'',c:e?e.c:'tec',how:e?e.how:''};
@@ -672,7 +672,7 @@ function meSheet(){
       '<input class="t2" style="border:0;background:none;width:100%;outline:none;padding:0" value="'+esc(p.name||'')+'" placeholder="Tu nombre" maxlength="30" onchange="setProfile(\'name\',this.value.trim().slice(0,30))" aria-label="Tu nombre">'+
       '<p class="fn l2">En este móvil · sin cuenta</p><span class="pill" style="margin-top:8px;background:var(--amber-soft);color:var(--amber)">Cinturón '+C.belt[1].toLowerCase()+'</span></div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Práctica</p><div class="group">'+
-      row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row('Objetivo',p.goal?GOALS[p.goal].n:'—','openPick(\'goal\')')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
+      row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row(goalsOf(p).length>1?'Objetivos':'Objetivo',goalsOf(p).length?(goalsOf(p).length>1?goalsOf(p).length+' elegidos':GOALS[goalsOf(p)[0]].n):'—','openGoals()')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Clases</p><div class="group">'+
       '<button class="cell" onclick="setTeacher(!DB.profile.teacher,true);openSheet(meSheet,true,true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Voy a clase</span><span class="sw'+(p.teacher?' on':'')+'" role="switch" aria-checked="'+!!p.teacher+'"></span></div></button>'+
       (p.teacher?row('Día de clase',p.classDay!=null?DIAS[p.classDay]:'—','openClassDay(true)'):'')+'</div></div>'+
@@ -702,14 +702,31 @@ function openMins(){
   openSheet(()=>({title:'Minutos al día',body:'<div class="pad stack">'+MINS.map(m=>optBtn({n:m+' minutos',s:{10:'Lo justo para no perder el hilo',15:'Una buena base',20:'Lo recomendado',30:'Para avanzar con ganas',45:'Práctica larga'}[m]},DB.cfg.mins===m,"setMins("+m+")")).join('')+
     (DB.cfg.bl?'<p class="fn l2 center">Tienes los bloques ajustados a mano; al elegir aquí se recalculan.</p>':'')+'</div>'}),true);
 }
-function setMins(m){DB.cfg.mins=m;DB.cfg.bl=null;if(!DB.plan||DB.plan.src==='auto')DB.plan=proposePlan(DB.profile.goal,DB.profile.lvl,m);save();backSheet();render()}
+function setMins(m){DB.cfg.mins=m;DB.cfg.bl=null;if(!DB.plan||DB.plan.src==='auto')DB.plan=proposePlan(goalsOf(),DB.profile.lvl,m);save();backSheet();render()}
 function openPick(k){
   const M={goal:[GOALS,'Objetivo'],lvl:[LEVELS,'Experiencia'],voice:[VOICES,'Tu voz']}[k];
   openSheet(()=>({title:M[1],body:'<div class="pad stack">'+(k==='voice'?'<p class="sb l2 center" style="padding:0 10px">Orientativo: si mides tu rango con el afinador, Neiro usa el tuyo.</p>':'')+
     Object.keys(M[0]).map(x=>optBtn(M[0][x],DB.profile[k]===x,"pickSet('"+k+"','"+x+"')",k==='goal'?GOAL_IC[x]:null)).join('')+
     (k!=='voice'&&DB.plan&&DB.plan.src!=='auto'?'<p class="fn l2 center">Tu práctica está ajustada a mano: no se cambiará.</p>':'')+'</div>'}),true);
 }
-function pickSet(k,v){DB.profile=Object.assign({},DB.profile,{[k]:v});if(k!=='voice'&&(!DB.plan||DB.plan.src==='auto'))DB.plan=proposePlan(DB.profile.goal,DB.profile.lvl,DB.cfg.mins);save();backSheet();render()}
+
+/* objetivos: hasta tres, y qué cambia cada uno */
+const GOAL_FX={disfrutar:'más rato de cantar por gusto',cancion:'más minutos de canción',tecnica:'más técnica',afinar:'ejercicios de oído y afinador',grupo:'intervalos y cantar sin piano'};
+const goalSummary=g=>{const t=g.map(k=>GOAL_FX[k]);return t.length?t.join(', ').replace(/^./,c=>c.toUpperCase()):''};
+function openGoals(){
+  openSheet(()=>{const g=goalsOf(),auto=!DB.plan||DB.plan.src==='auto';
+    return{title:'Objetivos',body:'<div class="pad stack"><p class="sb l2 center" style="padding:0 10px">Elige hasta tres. Cada uno cambia los ejercicios y los minutos de tu práctica.</p>'+
+      Object.keys(GOALS).map(k=>optBtn({n:GOALS[k].n,s:'Añade '+GOAL_FX[k]},g.includes(k),"toggleGoal('"+k+"')",GOAL_IC[k])).join('')+
+      (auto?'':'<p class="fn l2 center">Tus ejercicios están elegidos a mano y no cambian; sí cambian los minutos de cada bloque'+(DB.cfg.bl?', salvo que también los hayas ajustado':'')+'.</p>')+'</div>'}},true);
+}
+function toggleGoal(k){
+  const g=goalsOf().slice(),i=g.indexOf(k);
+  if(i>=0){if(g.length===1)return toast('Deja al menos un objetivo');g.splice(i,1)}else{if(g.length>=MAX_GOALS)return toast('Hasta tres objetivos');g.push(k)}
+  DB.profile=Object.assign({},DB.profile,{goals:g,goal:g[0]});
+  if(!DB.plan||DB.plan.src==='auto')DB.plan=proposePlan(g,DB.profile.lvl,DB.cfg.mins);
+  save();drawSheet();render();
+}
+function pickSet(k,v){DB.profile=Object.assign({},DB.profile,{[k]:v});if(k!=='voice'&&(!DB.plan||DB.plan.src==='auto'))DB.plan=proposePlan(goalsOf(),DB.profile.lvl,DB.cfg.mins);save();backSheet();render()}
 function openClassDay(push){
   openSheet(()=>({title:'Día de clase',body:'<div class="pad"><p class="sb l2 center" style="padding:0 10px 16px">Ese día Neiro te recordará apuntar la clase al salir.</p><div class="daysel">'+
     [1,2,3,4,5,6,0].map(d=>'<button class="'+(DB.profile.classDay===d?'on':'')+'" onclick="DB.profile.classDay='+d+';save();'+(push?'backSheet()':'closeSheet()')+';render()">'+WDL[d]+'</button>').join('')+'</div></div>'}),push);
@@ -849,12 +866,12 @@ let ONB=null;
 const ONB_ST=['goal','lvl','days','class','ready'];
 function openOnb(){
   const p=DB.profile;
-  ONB={i:0,goal:p.goal||'',lvl:p.lvl||'',av:(DB.cfg.avail||[1,3,5]).slice(),mins:DB.cfg.mins||20,teacher:p.teacher==null?null:!!p.teacher,cday:p.classDay!=null?p.classDay:null};
+  ONB={i:0,goals:goalsOf(p).slice(),lvl:p.lvl||'',av:(DB.cfg.avail||[1,3,5]).slice(),mins:DB.cfg.mins||20,teacher:p.teacher==null?null:!!p.teacher,cday:p.classDay!=null?p.classDay:null};
   renderOnb();$('welcome').classList.remove('on');$('onb').classList.add('on');
 }
 function onbGo(d){
   const st=ONB_ST[ONB.i];
-  if(d>0&&st==='goal'&&!ONB.goal)return toast('Elige un objetivo');
+  if(d>0&&st==='goal'&&!ONB.goals.length)return toast('Elige al menos un objetivo');
   if(d>0&&st==='lvl'&&!ONB.lvl)return toast('Elige tu experiencia');
   if(d>0&&st==='days'&&!ONB.av.length)return toast('Elige al menos un día');
   if(d>0&&st==='class'&&ONB.teacher==null)return toast('Dinos si vas a clase');
@@ -866,8 +883,9 @@ function onbGo(d){
 function renderOnb(){
   const st=ONB_ST[ONB.i];let h='';
   const head='<div class="fnav"><button class="ibtn glass" onclick="onbGo(-1)" aria-label="Atrás">'+ic('chevL',22,2.2)+'</button><div class="dots" style="width:150px" aria-label="Paso '+(ONB.i+1)+' de 5">'+ONB_ST.map((_,i)=>'<i class="'+(i<=ONB.i?'on':'')+'"></i>').join('')+'</div><div style="width:44px"></div></div>';
-  if(st==='goal')h='<h1 class="lt balance" style="margin-top:24px">¿Qué quieres conseguir?</h1><p class="sb l2" style="margin-top:8px">Con esto preparamos tu práctica. Puedes cambiarlo cuando quieras.</p><div class="stack" style="margin-top:24px;gap:10px">'+
-    Object.keys(GOALS).map(k=>optBtn(GOALS[k],ONB.goal===k,"ONB.goal='"+k+"';renderOnb()",GOAL_IC[k])).join('')+'</div>';
+  if(st==='goal')h='<h1 class="lt balance" style="margin-top:24px">¿Qué quieres conseguir?</h1><p class="sb l2" style="margin-top:8px">Elige hasta tres. Con esto preparamos tu práctica y puedes cambiarlo cuando quieras.</p><div class="stack" style="margin-top:24px;gap:10px">'+
+    Object.keys(GOALS).map(k=>optBtn(GOALS[k],ONB.goals.includes(k),"onbGoal('"+k+"')",GOAL_IC[k])).join('')+'</div>'+
+    '<p class="fn l2 center" style="margin-top:12px">'+(ONB.goals.length?ONB.goals.length+' de '+MAX_GOALS+' · '+goalSummary(ONB.goals):'Puedes marcar varios')+'</p>';
   if(st==='lvl')h='<h1 class="lt balance" style="margin-top:24px">¿Cuánto has cantado?</h1><p class="sb l2" style="margin-top:8px">Así elegimos los ejercicios con los que empiezas.</p><div class="stack" style="margin-top:24px;gap:10px">'+
     Object.keys(LEVELS).map(k=>optBtn(LEVELS[k],ONB.lvl===k,"ONB.lvl='"+k+"';renderOnb()")).join('')+'</div>';
   if(st==='days')h='<h1 class="lt balance" style="margin-top:24px">¿Cuándo puedes practicar?</h1><p class="sb l2" style="margin-top:8px">Mejor poco y a menudo que mucho de vez en cuando.</p><div class="daysel" style="margin-top:26px">'+
@@ -881,19 +899,21 @@ function renderOnb(){
   if(st==='ready'){
     const keep=DB.plan&&DB.plan.src!=='auto';
     const saved={plan:DB.plan,mins:DB.cfg.mins,bl:DB.cfg.bl};
-    if(!keep)DB.plan=proposePlan(ONB.goal,ONB.lvl,ONB.mins);
+    const pg=DB.profile.goals;DB.profile.goals=ONB.goals;
+    if(!keep)DB.plan=proposePlan(ONB.goals,ONB.lvl,ONB.mins);
     DB.cfg.mins=ONB.mins;if(!keep)DB.cfg.bl=null;
     const B=practiceBlocks(),tot=practiceMinutes();
-    DB.plan=saved.plan;DB.cfg.mins=saved.mins;DB.cfg.bl=saved.bl;ONB.preview=keep?null:proposePlan(ONB.goal,ONB.lvl,ONB.mins);
+    DB.plan=saved.plan;DB.cfg.mins=saved.mins;DB.cfg.bl=saved.bl;DB.profile.goals=pg;ONB.preview=keep?null:proposePlan(ONB.goals,ONB.lvl,ONB.mins);
     h='<div class="row" style="align-items:flex-end;margin-top:16px"><div class="grow" style="padding-bottom:6px"><h1 class="lt balance">Tu práctica está lista</h1><p class="sb l2 balance" style="margin-top:8px">'+tot+' minutos, '+plural(ONB.av.length,'día')+' a la semana'+(keep?', con los ejercicios de tu copia':'')+'.</p></div>'+dkStage('walk',2)+'</div>'+
       '<div class="card" style="padding:16px 18px 6px;margin-top:20px">'+B.map(b=>'<div class="row" style="gap:12px;padding:11px 0;border-top:.5px solid var(--sep)"><span class="ic soft" style="width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex-shrink:0">'+ic(BL_IC[b.k],17)+'</span><div class="grow" style="min-width:0"><p class="hl">'+b.n+'</p><p class="fn l2 ell">'+(b.ex.length?b.ex.map(exName).map(esc).join(', '):(b.k==='rep'?'Tus canciones':(b.k==='gus'?'Lo que te apetezca':'Libre')))+'</p></div><span class="fn l2 num">'+b.min+' min</span></div>').join('').replace('border-top:.5px solid var(--sep)','border-top:0')+'</div>'+
       '<p class="fn l2" style="padding:12px 16px 0">El piano de referencia te acompaña en cada ejercicio. Mide tu rango en Progreso para que suba justo hasta donde llegas.</p>';
   }
   $('onb').innerHTML='<div class="fullin">'+head+h+'<div class="foot"><button class="btn pri" onclick="onbGo(1)">'+(st==='ready'?'Empezar a cantar':'Continuar')+'</button></div></div>';
 }
+function onbGoal(k){const i=ONB.goals.indexOf(k);if(i>=0)ONB.goals.splice(i,1);else{if(ONB.goals.length>=MAX_GOALS)return toast('Hasta tres objetivos');ONB.goals.push(k)}renderOnb()}
 function onbDay(d){const i=ONB.av.indexOf(d);if(i>=0)ONB.av.splice(i,1);else ONB.av.push(d);renderOnb()}
 function finishOnb(){
-  DB.profile=Object.assign({},DB.profile,{goal:ONB.goal,lvl:ONB.lvl,teacher:!!ONB.teacher,classDay:ONB.teacher?ONB.cday:null,voice:DB.profile.voice||'nose',done:1});
+  DB.profile=Object.assign({},DB.profile,{goals:ONB.goals.slice(),goal:ONB.goals[0],lvl:ONB.lvl,teacher:!!ONB.teacher,classDay:ONB.teacher?ONB.cday:null,voice:DB.profile.voice||'nose',done:1});
   DB.cfg.avail=ONB.av.slice();DB.cfg.mins=ONB.mins;
   if(ONB.preview){DB.plan=ONB.preview;DB.cfg.bl=null}
   if(!DB.cfg.start)DB.cfg.start=T();
@@ -1000,7 +1020,7 @@ function renderSession(){
       (sg?'<div class="card" style="margin-top:12px;padding:16px"><p class="t3">'+esc(sg.t)+'</p>'+(sg.a?'<p class="fn l2">'+esc(sg.a)+'</p>':'')+
         (sg.h?'<p class="fn amb semi" style="margin-top:10px">Frases difíciles</p><p class="sb" style="white-space:pre-wrap">'+esc(sg.h)+'</p>':'')+(sg.nt?'<p class="fn l2" style="margin-top:8px;white-space:pre-wrap">'+esc(sg.nt)+'</p>':'')+'</div>'
         :'<div class="card" style="margin-top:12px;padding:16px;text-align:center"><p class="sb l2">Aún no tienes canciones en estudio. Canta la que estés trabajando y añádela después en Estudio.</p></div>')+
-      '<div class="row" style="justify-content:center;gap:20px;margin-top:18px;align-items:center">'+ring(140)+(sg?'<button class="btn sec" style="width:auto;padding:0 18px;height:46px" onclick="openRec(\'song\',false,\''+sg.id+'\')">'+ic('mic',18)+'Grabar toma</button>':'')+'</div>';
+      (sg&&goalsOf().includes('cancion')&&!(DB.recs||[]).some(r=>r.song===sg.id&&daysBetween(r.d,T())<7)?'<div class="note" style="margin-top:10px"><span>Esta semana aún no tienes una toma de esta canción. <b>Graba la frase difícil</b> y compárala dentro de unos días.</span></div>':'')+'<div class="row" style="justify-content:center;gap:20px;margin-top:18px;align-items:center">'+ring(140)+(sg?'<button class="btn sec" style="width:auto;padding:0 18px;height:46px" onclick="openRec(\'song\',false,\''+sg.id+'\')">'+ic('mic',18)+'Grabar toma</button>':'')+'</div>';
     if(sg)SS.song=sg.id;
   }else if(s.b==='gus'){
     body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.8)+ring(150)+'</div>';
@@ -1073,7 +1093,7 @@ function renderAcc(){
 function showApp(){$('welcome').classList.remove('on');$('tabbar').hidden=false;$('btnMe').hidden=false;$('btnTheme').hidden=false;applyTheme()}
 function startApp(){
   started=true;load();applyLook();
-  if(!DB.plan&&DB.profile.goal)DB.plan=proposePlan(DB.profile.goal,DB.profile.lvl,DB.cfg.mins);
+  if(!DB.plan&&goalsOf().length)DB.plan=proposePlan(goalsOf(),DB.profile.lvl,DB.cfg.mins);
   if(!(DB.profile&&DB.profile.done)){openOnb();return}
   showApp();go('hoy');
   const st=PREF.get('sess',null);

@@ -100,21 +100,43 @@ const exBase=id=>EXC[id]||(DB.cex||{})[id]||null;
 const exName=id=>{const e=exBase(id);return e?e.n:id};
 const exMinutes=e=>e.mode==='breath'?2:3;
 
-/* plan propuesto según objetivo, nivel y minutos */
-function proposePlan(goal,lvl,mins){
+/* objetivos del perfil (hasta 3); las copias antiguas guardaban uno solo en «goal» */
+const goalsOf=p=>{p=p||DB.profile||{};const g=Array.isArray(p.goals)?p.goals:(p.goal?[p.goal]:[]);return g.filter(k=>GOALS[k]).slice(0,3)};
+const MAX_GOALS=3;
+
+/* plan propuesto según objetivos, nivel y minutos */
+function proposePlan(goals,lvl,mins){
+  if(!Array.isArray(goals))goals=goals?[goals]:[];
+  const has=k=>goals.includes(k);
   const L=LVN[lvl]||0,ids=['labios','humming'];
   if(L===0)ids.push('resp448');else ids.push('sirena');
   if(L===0)ids.push('escala5');
   if(L===1)ids.push('arp1358','escala5');
   if(L===2)ids.push('arp7','octava');
-  if(goal==='tecnica')ids.push(L>=2?'messa':(L>=1?'staccato':'siseo'));
-  if(goal==='afinar'||goal==='grupo')ids.push('intervalos','refnota');
-  else if(L===0)ids.push('refnota');
+  if(has('tecnica'))ids.push(L>=2?'messa':(L>=1?'staccato':'siseo'));
+  if(has('afinar'))ids.push('intervalos','refnota');
+  if(has('grupo'))ids.push('intervalos','saltos');
+  if(!has('afinar')&&!has('grupo')&&L===0)ids.push('refnota');
   if(mins>=20)ids.push('enfriar');
   const uniq=[...new Set(ids)];
-  /* con poco tiempo, menos ejercicios de técnica */
-  if(mins<=10){const tec=uniq.filter(id=>['tec','oido'].includes(EXC[id].c));tec.slice(2).forEach(id=>uniq.splice(uniq.indexOf(id),1))}
+  /* con poco tiempo, o si lo importante son las canciones o disfrutar, menos ejercicios de técnica */
+  const maxTec=mins<=10?2:((has('cancion')||has('disfrutar'))&&!has('tecnica')&&!has('afinar')&&!has('grupo')?2:9);
+  const tec=uniq.filter(id=>['tec','oido'].includes(EXC[id].c));
+  tec.slice(maxTec).forEach(id=>uniq.splice(uniq.indexOf(id),1));
   return{ex:uniq,src:'auto'};
+}
+/* minutos por bloque según los objetivos: cada objetivo se lleva minutos hacia su bloque
+   (técnica, canción o por gusto), quitándolos de los otros sin bajar de 2 min. El total no cambia. */
+const GOAL_BLOCK={tecnica:1,afinar:1,grupo:1,cancion:2,disfrutar:3};
+function goalMins(goals,mins){
+  const b=(MINS_BL[mins]||MINS_BL[20]).slice(),tg=[...new Set((goals||[]).map(g=>GOAL_BLOCK[g]).filter(x=>x!=null))];
+  if(!tg.length||tg.length===3)return b;
+  const per=Math.max(1,Math.round(mins*.15));
+  tg.forEach(t=>{for(let k=0;k<per;k++){
+    const donors=[1,2,3].filter(i=>!tg.includes(i)&&b[i]>2).sort((x,y)=>b[y]-b[x]);
+    if(!donors.length)break;b[donors[0]]--;b[t]++;
+  }});
+  return b;
 }
 
 /* ═════ BLOQUES DE LA PRÁCTICA ═════ */
@@ -129,7 +151,7 @@ const planEx=()=>((DB.plan&&DB.plan.ex)||[]).filter(id=>exBase(id));
 const exOfBlock=b=>planEx().filter(id=>b.cats.includes(exBase(id).c));
 /* minutos de cada bloque; si no hay ejercicios de enfriamiento, ese rato pasa a «por gusto» */
 function blockMins(){
-  const bl=(DB.cfg.bl&&DB.cfg.bl.length===5?DB.cfg.bl:MINS_BL[DB.cfg.mins]||MINS_BL[20]).slice();
+  const bl=(DB.cfg.bl&&DB.cfg.bl.length===5?DB.cfg.bl:goalMins(goalsOf(),DB.cfg.mins)).slice();
   if(!exOfBlock(BLOCKS[4]).length){bl[3]+=bl[4];bl[4]=0}
   return bl;
 }
