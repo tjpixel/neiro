@@ -437,6 +437,7 @@ function playerHTML(id,tonic,on,small){
 }
 function pvToggle(){
   if(PAT.on){patStop();drawPlayerState();return}
+  if(SS.on&&!SS.min&&SS.ph==='step'&&!SS.run)togglePause();
   const e=Object.assign({id:PV.id},exBase(PV.id));
   patStart(e,PV.tonic,t=>{PV.tonic=t;const el=$('pvT');if(el)el.textContent=noteName(t)});drawPlayerState();
 }
@@ -974,10 +975,16 @@ function startSession(short){
 }
 function sessPersist(){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,t0:SS.t0,mins:SS.mins}:null)}
 function enterStep(autostart){
-  patStop();tunerStop();SS.holdOn=false;
+  patStop();tunerStop();SS.holdOn=false;SS.pauseAt=0;SS.patWas=SS.tunWas=false;
   const s=SS.steps[SS.i];SS.left=s.sec;SS.beeped=false;SS.run=!!autostart;SS.endAt=Date.now()+SS.left*1000;
   startTick();sessPersist();
 }
+/* una sola fuente de verdad para el tiempo: lo que queda del paso, cómo se escribe y el tiempo de práctica (sin pausas) */
+const stepLeft=()=>SS.run?(SS.endAt-Date.now())/1000:SS.left;
+const fmtL=L=>L>0?mmss(Math.ceil(L)):'+'+mmss(-L);
+const ringLbl=(L,s)=>L<=0?'Tiempo · pasa cuando quieras':(SS.run?'de '+mmss(s.sec):'En pausa');
+function practiceSec(){return SS.used.reduce((a,b)=>a+(b||0),0)+(SS.ph==='step'?stepElapsed():0)}
+const holdSec=()=>Math.max(0,Math.floor(((SS.run||!SS.pauseAt?Date.now():SS.pauseAt)-SS.holdT0)/1000));
 function stepElapsed(){const s=SS.steps[SS.i];if(!s)return 0;const left=SS.run?(SS.endAt-Date.now())/1000:SS.left;return Math.max(0,s.sec-left)}
 function nextStep(){
   SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();
@@ -985,9 +992,19 @@ function nextStep(){
   SS.i++;enterStep(true);renderSession();renderAcc();
 }
 function jumpStep(i){SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();SS.i=i;closeSheet();enterStep(true);renderSession();renderAcc()}
+/* la pausa lo congela todo: temporizador, reloj de práctica, piano, afinador, siseo y respiración; al seguir, vuelve lo que sonaba */
 function togglePause(){
-  if(SS.run){SS.left=(SS.endAt-Date.now())/1000;SS.run=false;patStop()}else{SS.endAt=Date.now()+SS.left*1000;SS.run=true}
-  renderSession();
+  if(SS.run){
+    SS.left=(SS.endAt-Date.now())/1000;SS.run=false;SS.pauseAt=Date.now();endPrev=null;
+    SS.patWas=PAT.on;SS.tunWas=TUN.on;patStop();tunerStop();
+    renderSession();renderAcc();return;
+  }
+  SS.endAt=Date.now()+SS.left*1000;SS.run=true;
+  if(SS.holdOn&&SS.pauseAt)SS.holdT0+=Date.now()-SS.pauseAt;
+  SS.pauseAt=0;const pw=SS.patWas,tw=SS.tunWas;SS.patWas=SS.tunWas=false;
+  renderSession();renderAcc();
+  if(pw&&!PAT.on&&!SS.min)pvToggle();
+  if(tw&&!TUN.on&&!SS.min)tunerGo().then(ok=>{if(ok)renderSession()});
 }
 function addMin(){endPrev=null;if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;tick()}
 /* temporizador: se vacía en sentido horario y avisa al acabarse: ámbar en los últimos 10 s, rojo en los 3 últimos, con vibración (como en Tsuyo) */
@@ -998,26 +1015,26 @@ function endBuzz(L){const p=endPrev;endPrev=L;if(p==null)return;if((p>10&&L<=10)
 function startTick(){clearInterval(SS.tIv);SS.tIv=setInterval(tick,250)}
 function tick(){
   if(!SS.on)return;
-  const c=$('ssClock');if(c)c.textContent=mmss((Date.now()-SS.t0)/1000);
+  const c=$('ssClock');if(c)c.textContent=mmss(practiceSec());
   if(SS.ph!=='step')return;
-  const s=SS.steps[SS.i],L=SS.run?(SS.endAt-Date.now())/1000:SS.left;
+  const s=SS.steps[SS.i],L=stepLeft();
   if(SS.run&&L<=0&&!SS.beeped){SS.beeped=true;ding()}
   const t=$('ssT'),a=$('ssArc'),lb=$('ssL');
-  if(t){t.textContent=L>0?mmss(Math.ceil(L)):'+'+mmss(-L);t.style.color=endTxt(L)}
+  if(t){t.textContent=fmtL(L);t.style.color=endTxt(L)}
   if(a){const C=2*Math.PI*82;a.setAttribute('stroke-dashoffset',-C*(1-Math.max(0,L)/s.sec));a.setAttribute('stroke',endCol(L))}
   if(SS.run)endBuzz(L);else endPrev=null;
-  if(lb)lb.textContent=L<=0?'Tiempo · pasa cuando quieras':(SS.run?'de '+mmss(s.sec):'En pausa');
+  if(lb)lb.textContent=ringLbl(L,s);
   // respiración: 4 inhala · 4 sostén · 8 suelta
   const br=$('ssBreath');
   if(br){const el=stepElapsed()%16,ph=el<4?['Inhala',1,4-el]:(el<8?['Sostén',1,8-el]:['Suelta',.55,16-el]);
     br.style.setProperty('--b',SS.run?(el<4?.55+.45*(el/4):(el<8?1:1-.45*((el-8)/8))):.55);
     const tx=$('ssBrT'),n=$('ssBrN');if(tx)tx.textContent=SS.run?ph[0]:'En pausa';if(n)n.textContent=SS.run?Math.ceil(ph[2]):''}
-  if(SS.holdOn){const h=$('ssHold');if(h)h.textContent=Math.floor((Date.now()-SS.holdT0)/1000)+' s'}
+  if(SS.holdOn){const h=$('ssHold');if(h)h.textContent=holdSec()+' s'}
   renderAcc();
 }
 function sessHead(){
   return '<div class="fnav"><button class="ibtn glass" onclick="minimizeSession()" aria-label="Minimizar la práctica">'+ic('chevD',22,2.2)+'</button>'+
-    '<div class="center"><p class="fn semi">Práctica</p><p class="c1 l2 num" id="ssClock">'+mmss((Date.now()-SS.t0)/1000)+'</p></div>'+
+    '<div class="center"><p class="fn semi">Práctica</p><p class="c1 l2 num" id="ssClock">'+mmss(practiceSec())+'</p></div>'+
     '<button class="ibtn glass" onclick="openSessMenu()" aria-label="Opciones de la práctica">'+ic('more',22)+'</button></div>'+
     '<div style="margin-top:10px" class="dots" aria-label="Paso '+(SS.i+1)+' de '+SS.steps.length+'">'+SS.steps.map((s,i)=>'<i class="'+(i<SS.i?'on':(i===SS.i?'now':''))+'"></i>').join('')+'</div>';
 }
@@ -1026,30 +1043,30 @@ function renderSession(){
   if(SS.ph==='rate'){renderRate();return}
   if(SS.ph==='done'){renderDone();return}
   const s=SS.steps[SS.i],e=s.ex?exBase(s.ex):null,last=SS.i===SS.steps.length-1,nx=SS.steps[SS.i+1];
-  const L=SS.run?(SS.endAt-Date.now())/1000:SS.left,R=82,C=2*Math.PI*R;
+  const L=stepLeft(),R=82,C=2*Math.PI*R,RING=160;
   const ring=(sz)=>'<div class="ring" style="width:'+sz+'px;height:'+sz+'px"><svg width="'+sz+'" height="'+sz+'" viewBox="0 0 176 176" aria-hidden="true"><circle cx="88" cy="88" r="'+R+'" fill="none" stroke="var(--fill2)" stroke-width="11"/>'+
     '<circle id="ssArc" cx="88" cy="88" r="'+R+'" fill="none" stroke="'+endCol(L)+'" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(-C*(1-Math.max(0,L)/s.sec))+'"/></svg>'+
-    '<div class="in"><span class="rnd num bold" style="font-size:'+(sz>150?46:34)+'px;line-height:1.1;color:'+endTxt(L)+'" id="ssT">'+mmss(Math.ceil(Math.max(0,L)))+'</span><span class="fn l2 num" id="ssL">'+(SS.run?'de '+mmss(s.sec):'En pausa')+'</span></div></div>';
+    '<div class="in"><span class="rnd num bold" style="font-size:'+(sz>150?46:34)+'px;line-height:1.1;color:'+endTxt(L)+'" id="ssT">'+fmtL(L)+'</span><span class="fn l2 num" id="ssL">'+ringLbl(L,s)+'</span></div></div>';
   let title=e?esc(e.n):s.bn,sub=s.of>1?s.bn+' · '+s.k+' de '+s.of:s.bn,body='';
   const lc=lastClass();
-  if(s.b==='cal'&&!e){title='Calentamiento libre';body='<p class="sb" style="margin-top:14px">Calienta como te enseñe tu profe: labios, humming, sirenas suaves. Sin forzar.</p><div style="display:flex;justify-content:center;margin-top:20px">'+ring(176)+'</div>'}
+  if(s.b==='cal'&&!e){title='Calentamiento libre';body='<p class="sb" style="margin-top:14px">Calienta como te enseñe tu profe: labios, humming, sirenas suaves. Sin forzar.</p><div style="display:flex;justify-content:center;margin-top:20px">'+ring(RING)+'</div>'}
   else if(e&&e.mode==='breath'){
     body='<p class="sb l2" style="margin-top:10px">'+esc(e.how)+'</p><div class="breath" id="ssBreath" style="margin-top:22px"><div class="in"><p class="t2" id="ssBrT">Inhala</p><p class="rnd num bold" style="font-size:40px;line-height:46px" id="ssBrN"></p></div></div>'+
       '<div style="display:flex;justify-content:center;margin-top:16px">'+miniTimer()+'</div>';
   }else if(e&&e.mode==='hold'){
-    body='<p class="sb l2" style="margin-top:10px">'+esc(e.how)+'</p><div class="card" style="margin-top:18px;padding:18px;text-align:center"><p class="fn l2">'+(DB.best[s.ex]?'Tu marca: '+DB.best[s.ex]+' s':'Primera vez: apunta tu marca')+'</p><p class="big rnd" id="ssHold">'+(SS.holdOn?Math.floor((Date.now()-SS.holdT0)/1000):0)+' s</p>'+
+    body='<p class="sb l2" style="margin-top:10px">'+esc(e.how)+'</p><div class="card" style="margin-top:18px;padding:18px;text-align:center"><p class="fn l2">'+(DB.best[s.ex]?'Tu marca: '+DB.best[s.ex]+' s':'Primera vez: apunta tu marca')+'</p><p class="big rnd" id="ssHold">'+(SS.holdOn?holdSec():0)+' s</p>'+
       '<button class="btn '+(SS.holdOn?'inv':'pri')+'" style="margin-top:10px" onclick="holdToggle()">'+(SS.holdOn?ic('stop',20)+'Parar':ic('play',18)+'Empezar el siseo')+'</button></div><div style="display:flex;justify-content:center;margin-top:16px">'+miniTimer()+'</div>';
   }else if(e&&e.mode==='tuner'){
     const tgt=startTonic({pat:[0]})+(SS.tgtOff||0);TUNT=tgt;
     body='<p class="sb l2" style="margin-top:10px">'+esc(e.how)+'</p><div style="margin-top:16px">'+tunerHTML(tgt)+'</div>'+
       '<div class="row" style="gap:8px;margin-top:12px"><button class="btn sec grow" style="height:46px" onclick="tone('+tgt+',1.8)">'+ic('keys',18)+'Escuchar '+noteName(tgt)+'</button><button class="btn sec" style="width:auto;padding:0 14px;height:46px" onclick="SS.tgtOff=((SS.tgtOff||0)+[2,2,1,2,2,2,1][(SS.tgtN=(SS.tgtN||0)+1)%7])%12;renderSession()">Otra nota</button></div>'+
-      (TUN.on?'':'<button class="btn pri" style="margin-top:8px" onclick="tunerGo().then(ok=>{if(ok)renderSession()})">'+ic('mic',18)+'Activar el afinador</button>')+
+      (TUN.on?'':'<button class="btn pri" style="margin-top:8px" onclick="if(!SS.run)togglePause();tunerGo().then(ok=>{if(ok)renderSession()})">'+ic('mic',18)+'Activar el afinador</button>')+
       '<div style="display:flex;justify-content:center;margin-top:14px">'+miniTimer()+'</div>';
   }else if(e){
     if(PV.id!==s.ex){PV={id:s.ex,tonic:startTonic(e)}}
     body='<div class="card" style="margin-top:14px;padding:13px 16px"><p class="sb">'+esc(e.how)+'</p></div>'+
       (s.b==='tec'&&lc&&lc.f?'<div class="note" style="margin-top:10px"><span>En qué fijarte: <b>'+esc(lc.f)+'</b></span></div>':'')+
-      '<div style="display:flex;justify-content:center;margin-top:18px">'+ring(e.pat?150:176)+'</div>'+
+      '<div style="display:flex;justify-content:center;margin-top:18px">'+ring(RING)+'</div>'+
       (e.pat?'<div style="margin-top:16px">'+playerHTML(s.ex,PV.tonic,PAT.on)+'</div>':'');
   }else if(s.b==='rep'){
     const L2=songsActive(),sg=L2.find(x=>x.id===SS.song)||L2[0];
@@ -1057,21 +1074,21 @@ function renderSession(){
       (sg?'<div class="card" style="margin-top:12px;padding:16px"><p class="t3">'+esc(sg.t)+'</p>'+(sg.a?'<p class="fn l2">'+esc(sg.a)+'</p>':'')+
         (sg.h?'<p class="fn amb semi" style="margin-top:10px">Frases difíciles</p><p class="sb" style="white-space:pre-wrap">'+esc(sg.h)+'</p>':'')+(sg.nt?'<p class="fn l2" style="margin-top:8px;white-space:pre-wrap">'+esc(sg.nt)+'</p>':'')+'</div>'
         :'<div class="card" style="margin-top:12px;padding:16px;text-align:center"><p class="sb l2">Aún no tienes canciones en estudio. Canta la que estés trabajando y añádela después en Estudio.</p></div>')+
-      (sg&&goalsOf().includes('cancion')&&!(DB.recs||[]).some(r=>r.song===sg.id&&daysBetween(r.d,T())<7)?'<div class="note" style="margin-top:10px"><span>Esta semana aún no tienes una toma de esta canción. <b>Graba la frase difícil</b> y compárala dentro de unos días.</span></div>':'')+'<div class="row" style="justify-content:center;gap:20px;margin-top:18px;align-items:center">'+ring(140)+(sg?'<button class="btn sec" style="width:auto;padding:0 18px;height:46px" onclick="openRec(\'song\',false,\''+sg.id+'\')">'+ic('mic',18)+'Grabar toma</button>':'')+'</div>';
+      (sg&&goalsOf().includes('cancion')&&!(DB.recs||[]).some(r=>r.song===sg.id&&daysBetween(r.d,T())<7)?'<div class="note" style="margin-top:10px"><span>Esta semana aún no tienes una toma de esta canción. <b>Graba la frase difícil</b> y compárala dentro de unos días.</span></div>':'')+'<div class="row" style="justify-content:center;gap:20px;margin-top:18px;align-items:center">'+ring(RING)+(sg?'<button class="btn sec" style="width:auto;padding:0 18px;height:46px" onclick="openRec(\'song\',false,\''+sg.id+'\')">'+ic('mic',18)+'Grabar toma</button>':'')+'</div>';
     if(sg)SS.song=sg.id;
   }else if(s.b==='gus'){
-    body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.8)+ring(150)+'</div>';
+    body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.5)+ring(RING)+'</div>';
   }
-  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center"><button class="btn sec sm" style="height:44px;padding:0 18px;border-radius:22px;font-size:15px" onclick="togglePause()">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+'Seguir')+'</button><button class="btn sec sm" style="height:44px;padding:0 18px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
+  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center"><button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause()" aria-label="'+(SS.run?'Pausar la práctica':'Seguir con la práctica')+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+'Seguir')+'</button><button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
     '<button class="btn pri lg" style="margin-top:6px" onclick="nextStep()">'+(last?ic('check',22,2.6)+'Terminar':'Siguiente: '+esc(nx.ex?exName(nx.ex):nx.bn))+'</button></div>';
   $('session').innerHTML='<div class="fullin">'+sessHead()+'<p class="fn l2" style="margin-top:20px">'+sub+'</p><h1 class="lt balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
   if(e&&e.mode==='tuner'&&TUN.on){TUN.cb=(r)=>tunerUpdate(r)}
 }
-const miniTimer=()=>'<div class="row" style="gap:8px;padding:8px 16px;border-radius:20px;background:var(--fill2)">'+ic('clock',16)+'<span class="fn num semi" id="ssT">'+mmss(Math.ceil(Math.max(0,SS.run?(SS.endAt-Date.now())/1000:SS.left)))+'</span><span class="c1 l2" id="ssL"></span></div>';
+const miniTimer=()=>{const L=stepLeft(),s=SS.steps[SS.i];return '<div class="row" style="gap:8px;padding:8px 16px;border-radius:20px;background:var(--fill2)">'+ic('clock',16)+'<span class="fn num semi" id="ssT" style="color:'+endTxt(L)+'">'+fmtL(L)+'</span><span class="c1 l2" id="ssL">'+ringLbl(L,s)+'</span></div>'};
 function holdToggle(){
   const s=SS.steps[SS.i];
-  if(!SS.holdOn){SS.holdOn=true;SS.holdT0=Date.now();renderSession();return}
-  const sec=Math.floor((Date.now()-SS.holdT0)/1000);SS.holdOn=false;
+  if(!SS.holdOn){if(!SS.run)togglePause();SS.holdOn=true;SS.holdT0=Date.now();renderSession();return}
+  const sec=holdSec();SS.holdOn=false;
   if(sec>=3){const prev=DB.best[s.ex]||0;if(sec>prev){DB.best[s.ex]=sec;save();toast(prev?'¡Nueva marca: '+sec+' s!':'Marca apuntada: '+sec+' s')}else toast(sec+' s')}
   renderSession();
 }
@@ -1122,8 +1139,8 @@ function renderAcc(){
   const s=SS.steps[SS.i],L=SS.ph==='step'?(SS.run?(SS.endAt-Date.now())/1000:SS.left):0,C=2*Math.PI*16.5,pct=SS.ph==='step'?Math.max(0,L)/s.sec:1;
   a.innerHTML='<div class="ring" style="width:40px;height:40px"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16.5" fill="none" stroke="var(--fill)" stroke-width="4"/>'+
     '<circle cx="20" cy="20" r="16.5" fill="none" stroke="'+(SS.ph==='step'?endCol(L):'var(--tint)')+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(-C*(1-pct))+'"/></svg><div class="in">'+(SS.ph==='step'?'':ic('check',15))+'</div></div>'+
-    '<div class="grow"><p class="fn semi num">'+(SS.ph==='step'?(SS.run?(L>0?mmss(Math.ceil(L)):'Tiempo'):'En pausa'):'Falta valorar')+'</p><p class="c1 l2 ell">'+esc(s?(s.ex?exName(s.ex):s.bn):'Práctica')+'</p></div>'+
-    '<span class="btn sec sm" style="height:38px">Seguir</span>';
+    '<div class="grow"><p class="fn semi num">'+(SS.ph==='step'?(SS.run?(L>0?mmss(Math.ceil(L)):'Tiempo · '+fmtL(L)):'En pausa'):'Falta valorar')+'</p><p class="c1 l2 ell">'+esc(s?(s.ex?exName(s.ex):s.bn):'Práctica')+'</p></div>'+
+    '<span class="btn sec sm" style="height:38px">Abrir</span>';
 }
 
 /* tamaño bloqueado, como una app: sin pellizcar para ampliar ni doble toque (Safari ignora user-scalable) */
