@@ -388,11 +388,42 @@ function drawSheet(){
     '<div class="sbody">'+o.body+'</div>';
   sh.dataset.k=SHS.length;
   if(same)sh.querySelector('.sbody').scrollTop=sc;
-  sh.classList.add('on');$('scrim').classList.add('on');
+  sh.classList.add('on');$('scrim').classList.add('on');lockScroll(true);
 }
 function sheetCleanup(){if(onSheetClose){const f=onSheetClose;onSheetClose=null;f()}}
 function backSheet(){sheetCleanup();SHS.pop();SHS.length?drawSheet():closeSheet()}
-function closeSheet(){sheetCleanup();$('sheet').classList.remove('on');$('scrim').classList.remove('on');SHS.length=0;delete $('sheet').dataset.k;if(!SS.on||SS.min)patStop()}
+function closeSheet(){sheetCleanup();const sh=$('sheet');sh.classList.remove('on','drag');sh.style.transform='';$('scrim').classList.remove('on');$('scrim').style.opacity='';SHS.length=0;delete sh.dataset.k;lockScroll(false);if(document.activeElement)document.activeElement.blur();if(!SS.on||SS.min)patStop()}
+/* con una hoja abierta, la pantalla de detrás no se mueve */
+let LOCKY=null;
+function lockScroll(on){
+  const b=document.body;
+  if(on&&LOCKY==null){LOCKY=window.scrollY;b.style.top=-LOCKY+'px';b.classList.add('locked')}
+  else if(!on&&LOCKY!=null){b.classList.remove('locked');b.style.top='';window.scrollTo(0,LOCKY);LOCKY=null}
+}
+/* arrastrar hacia abajo para cerrar, como en iOS: desde la barrita o la cabecera, o desde el contenido si ya está arriba del todo.
+   Un gesto que empieza de lado (carruseles, selectores) no cuenta. */
+(function(){
+  let x0=0,y0=0,t0=0,dy=0,on=false,ok=false;
+  const sh=()=>$('sheet');
+  document.addEventListener('touchstart',e=>{
+    const s=sh();if(!s||!s.classList.contains('on')||!s.contains(e.target)||e.touches.length>1){ok=false;return}
+    const body=s.querySelector('.sbody'),inHead=!!e.target.closest('.grabber,.shead')&&!e.target.closest('button');
+    ok=inHead||(body&&body.contains(e.target)&&body.scrollTop<=0&&!e.target.closest('input,textarea,select,.seg3,.segc'));
+    x0=e.touches[0].clientX;y0=e.touches[0].clientY;t0=Date.now();dy=0;on=false;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!ok||e.touches.length>1)return;const s=sh();dy=e.touches[0].clientY-y0;const dx=e.touches[0].clientX-x0;
+    if(!on){if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>6){ok=false;return}if(dy>8){on=true;s.classList.add('drag')}else if(dy<-4){ok=false;return}else return}
+    e.preventDefault();const d=Math.max(0,dy);
+    s.style.transform='translate(-50%,'+d+'px)';$('scrim').style.opacity=String(Math.max(0,1-d/(s.offsetHeight||600)));
+  },{passive:false});
+  document.addEventListener('touchend',()=>{
+    if(!on){ok=false;return}
+    const s=sh(),v=dy/Math.max(1,Date.now()-t0);s.classList.remove('drag');on=false;ok=false;
+    if(dy>Math.min(140,s.offsetHeight*.3)||v>.6)closeSheet();
+    else{s.style.transform='';$('scrim').style.opacity=''}
+  });
+})();
 function confirmSheet(title,text,btn,fn,danger){
   openSheet(()=>({title,body:'<div class="pad">'+(text?'<p class="sb center" style="padding:0 12px">'+text+'</p>':'')+'<div class="stack" style="margin-top:18px"><button class="btn '+(danger?'sec danger':'pri')+'" onclick="'+fn.replace(/"/g,'&quot;')+'">'+btn+'</button><button class="btn sec" onclick="backSheet()">Cancelar</button></div></div>'}),true);
 }
@@ -958,7 +989,12 @@ function togglePause(){
   if(SS.run){SS.left=(SS.endAt-Date.now())/1000;SS.run=false;patStop()}else{SS.endAt=Date.now()+SS.left*1000;SS.run=true}
   renderSession();
 }
-function addMin(){if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;tick()}
+function addMin(){endPrev=null;if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;tick()}
+/* temporizador: se vacía en sentido horario y avisa al acabarse: ámbar en los últimos 10 s, rojo en los 3 últimos, con vibración (como en Tsuyo) */
+const endCol=L=>L<=0?'var(--tint)':(L<=3.05?'var(--red)':(L<=10.05?'var(--warn)':'var(--tint)'));
+const endTxt=L=>L<=0?'':(L<=3.05?'var(--red)':(L<=10.05?'var(--amber)':''));
+let endPrev=null;
+function endBuzz(L){const p=endPrev;endPrev=L;if(p==null)return;if((p>10&&L<=10)||(p>3&&L<=3))try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}}
 function startTick(){clearInterval(SS.tIv);SS.tIv=setInterval(tick,250)}
 function tick(){
   if(!SS.on)return;
@@ -967,8 +1003,9 @@ function tick(){
   const s=SS.steps[SS.i],L=SS.run?(SS.endAt-Date.now())/1000:SS.left;
   if(SS.run&&L<=0&&!SS.beeped){SS.beeped=true;ding()}
   const t=$('ssT'),a=$('ssArc'),lb=$('ssL');
-  if(t)t.textContent=L>0?mmss(Math.ceil(L)):'+'+mmss(-L);
-  if(a){const C=2*Math.PI*82;a.setAttribute('stroke-dashoffset',C*(1-Math.max(0,L)/s.sec))}
+  if(t){t.textContent=L>0?mmss(Math.ceil(L)):'+'+mmss(-L);t.style.color=endTxt(L)}
+  if(a){const C=2*Math.PI*82;a.setAttribute('stroke-dashoffset',-C*(1-Math.max(0,L)/s.sec));a.setAttribute('stroke',endCol(L))}
+  if(SS.run)endBuzz(L);else endPrev=null;
   if(lb)lb.textContent=L<=0?'Tiempo · pasa cuando quieras':(SS.run?'de '+mmss(s.sec):'En pausa');
   // respiración: 4 inhala · 4 sostén · 8 suelta
   const br=$('ssBreath');
@@ -991,8 +1028,8 @@ function renderSession(){
   const s=SS.steps[SS.i],e=s.ex?exBase(s.ex):null,last=SS.i===SS.steps.length-1,nx=SS.steps[SS.i+1];
   const L=SS.run?(SS.endAt-Date.now())/1000:SS.left,R=82,C=2*Math.PI*R;
   const ring=(sz)=>'<div class="ring" style="width:'+sz+'px;height:'+sz+'px"><svg width="'+sz+'" height="'+sz+'" viewBox="0 0 176 176" aria-hidden="true"><circle cx="88" cy="88" r="'+R+'" fill="none" stroke="var(--fill2)" stroke-width="11"/>'+
-    '<circle id="ssArc" cx="88" cy="88" r="'+R+'" fill="none" stroke="var(--tint)" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+C*(1-Math.max(0,L)/s.sec)+'"/></svg>'+
-    '<div class="in"><span class="rnd num bold" style="font-size:'+(sz>150?46:34)+'px;line-height:1.1" id="ssT">'+mmss(Math.ceil(Math.max(0,L)))+'</span><span class="fn l2 num" id="ssL">'+(SS.run?'de '+mmss(s.sec):'En pausa')+'</span></div></div>';
+    '<circle id="ssArc" cx="88" cy="88" r="'+R+'" fill="none" stroke="'+endCol(L)+'" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(-C*(1-Math.max(0,L)/s.sec))+'"/></svg>'+
+    '<div class="in"><span class="rnd num bold" style="font-size:'+(sz>150?46:34)+'px;line-height:1.1;color:'+endTxt(L)+'" id="ssT">'+mmss(Math.ceil(Math.max(0,L)))+'</span><span class="fn l2 num" id="ssL">'+(SS.run?'de '+mmss(s.sec):'En pausa')+'</span></div></div>';
   let title=e?esc(e.n):s.bn,sub=s.of>1?s.bn+' · '+s.k+' de '+s.of:s.bn,body='';
   const lc=lastClass();
   if(s.b==='cal'&&!e){title='Calentamiento libre';body='<p class="sb" style="margin-top:14px">Calienta como te enseñe tu profe: labios, humming, sirenas suaves. Sin forzar.</p><div style="display:flex;justify-content:center;margin-top:20px">'+ring(176)+'</div>'}
@@ -1084,11 +1121,14 @@ function renderAcc(){
   if(!on)return;
   const s=SS.steps[SS.i],L=SS.ph==='step'?(SS.run?(SS.endAt-Date.now())/1000:SS.left):0,C=2*Math.PI*16.5,pct=SS.ph==='step'?Math.max(0,L)/s.sec:1;
   a.innerHTML='<div class="ring" style="width:40px;height:40px"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16.5" fill="none" stroke="var(--fill)" stroke-width="4"/>'+
-    '<circle cx="20" cy="20" r="16.5" fill="none" stroke="var(--tint)" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+C*(1-pct)+'"/></svg><div class="in">'+(SS.ph==='step'?'':ic('check',15))+'</div></div>'+
+    '<circle cx="20" cy="20" r="16.5" fill="none" stroke="'+(SS.ph==='step'?endCol(L):'var(--tint)')+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(-C*(1-pct))+'"/></svg><div class="in">'+(SS.ph==='step'?'':ic('check',15))+'</div></div>'+
     '<div class="grow"><p class="fn semi num">'+(SS.ph==='step'?(SS.run?(L>0?mmss(Math.ceil(L)):'Tiempo'):'En pausa'):'Falta valorar')+'</p><p class="c1 l2 ell">'+esc(s?(s.ex?exName(s.ex):s.bn):'Práctica')+'</p></div>'+
     '<span class="btn sec sm" style="height:38px">Seguir</span>';
 }
 
+/* tamaño bloqueado, como una app: sin pellizcar para ampliar ni doble toque (Safari ignora user-scalable) */
+['gesturestart','gesturechange'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
 /* ═════ ARRANQUE ═════ */
 function showApp(){$('welcome').classList.remove('on');$('tabbar').hidden=false;$('btnMe').hidden=false;$('btnTheme').hidden=false;applyTheme()}
 function startApp(){

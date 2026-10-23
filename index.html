@@ -2,7 +2,7 @@
 <html lang="es" data-theme="auto">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#F2F2F6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0A0A0C" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,7 +27,7 @@
   --label:#0B0B10;--label2:rgba(60,60,67,.68);--label3:rgba(60,60,67,.38);
   --sep:rgba(60,60,67,.16);--fill:rgba(120,120,128,.20);--fill2:rgba(120,120,128,.12);
   --tint:#C8F57A;--on-tint:#10160A;--ink:#4A7A12;--tint-soft:rgba(140,198,63,.20);
-  --amber:#9A5F0C;--amber-soft:rgba(214,155,42,.16);--red:#D93F32;--red-soft:rgba(217,63,50,.12);
+  --warn:#E3A12F;--amber:#9A5F0C;--amber-soft:rgba(214,155,42,.16);--red:#D93F32;--red-soft:rgba(217,63,50,.12);
   --glass:rgba(255,255,255,.82);--glass-edge:rgba(255,255,255,.95);--glass-hi:rgba(255,255,255,.6);
   --shade:rgba(30,30,60,.14);--floor:rgba(30,30,60,.12);--scrim:rgba(0,0,0,.28);
   --belt:#efe9dc;
@@ -38,7 +38,7 @@
   --label:#F5F5F9;--label2:rgba(235,235,245,.64);--label3:rgba(235,235,245,.36);
   --sep:rgba(235,235,245,.12);--fill:rgba(120,120,128,.34);--fill2:rgba(120,120,128,.22);
   --tint:#C8F57A;--on-tint:#10160A;--ink:#C8F57A;--tint-soft:rgba(200,245,122,.14);
-  --amber:#F5C87A;--amber-soft:rgba(245,200,122,.15);--red:#FF6B5E;--red-soft:rgba(255,107,94,.16);
+  --warn:#F5C87A;--amber:#F5C87A;--amber-soft:rgba(245,200,122,.15);--red:#FF6B5E;--red-soft:rgba(255,107,94,.16);
   --glass:rgba(36,36,41,.76);--glass-edge:rgba(255,255,255,.16);--glass-hi:rgba(255,255,255,.08);
   --shade:rgba(0,0,0,.55);--floor:rgba(0,0,0,.55);--scrim:rgba(0,0,0,.55);
   color-scheme:dark}}
@@ -47,7 +47,7 @@
   --label:#F5F5F9;--label2:rgba(235,235,245,.64);--label3:rgba(235,235,245,.36);
   --sep:rgba(235,235,245,.12);--fill:rgba(120,120,128,.34);--fill2:rgba(120,120,128,.22);
   --tint:#C8F57A;--on-tint:#10160A;--ink:#C8F57A;--tint-soft:rgba(200,245,122,.14);
-  --amber:#F5C87A;--amber-soft:rgba(245,200,122,.15);--red:#FF6B5E;--red-soft:rgba(255,107,94,.16);
+  --warn:#F5C87A;--amber:#F5C87A;--amber-soft:rgba(245,200,122,.15);--red:#FF6B5E;--red-soft:rgba(255,107,94,.16);
   --glass:rgba(36,36,41,.76);--glass-edge:rgba(255,255,255,.16);--glass-hi:rgba(255,255,255,.08);
   --shade:rgba(0,0,0,.55);--floor:rgba(0,0,0,.55);--scrim:rgba(0,0,0,.55);
   color-scheme:dark}
@@ -57,7 +57,7 @@ html,body{background:var(--bg);color:var(--label);overscroll-behavior-y:none}
 body{
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro",system-ui,"Segoe UI",Roboto,sans-serif;
   font-size:17px;line-height:22px;letter-spacing:-.43px;-webkit-font-smoothing:antialiased;
-  -webkit-text-size-adjust:100%;min-height:100dvh;
+  -webkit-text-size-adjust:100%;min-height:100dvh;touch-action:manipulation;
 }
 button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 button{background:none;border:0;cursor:pointer;text-align:inherit}
@@ -197,7 +197,7 @@ input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appear
 .avatar .deshi{margin-top:6px}
 
 /* ── hojas ── */
-.scrim{position:fixed;inset:0;background:var(--scrim);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s}
+.scrim{position:fixed;inset:0;touch-action:none;background:var(--scrim);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s}
 .scrim.on{opacity:1;pointer-events:auto}
 .sheet{position:fixed;left:50%;bottom:0;transform:translate(-50%,100%);width:100%;max-width:440px;max-height:calc(100dvh - env(safe-area-inset-top) - 14px);
   background:var(--sheet);border-radius:38px 38px 0 0;z-index:60;display:flex;flex-direction:column;transition:transform .32s cubic-bezier(.2,.9,.25,1);
@@ -207,7 +207,10 @@ input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appear
 .grabber{width:36px;height:5px;border-radius:3px;background:var(--fill);margin:6px auto 0;flex-shrink:0}
 .shead{height:52px;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;padding:0 64px}
 .shead .l{position:absolute;left:14px}.shead .r{position:absolute;right:14px}
-.sbody{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 0 24px;flex:1}
+.sbody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:4px 0 24px;flex:1}
+.grabber{position:relative}.grabber::after{content:'';position:absolute;left:-30px;right:-30px;top:-10px;bottom:-12px}
+.sheet.drag{transition:none}
+body.locked{position:fixed;left:0;right:0;overflow:hidden}
 .ok-btn{width:38px;height:38px;background:var(--tint);color:var(--on-tint)}
 .x-btn{width:38px;height:38px;background:var(--fill2);color:var(--label2)}
 
@@ -255,7 +258,7 @@ input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appear
 .seg3 button.on{background:var(--tint-soft);box-shadow:inset 0 0 0 1.5px var(--ink)}
 .seg3 button.on .hl{color:var(--ink)}
 .ring{position:relative;flex-shrink:0}
-.ring svg{transform:rotate(-90deg)}
+.ring>svg{transform:rotate(-90deg)}
 .ring .in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .mini{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--bg2);color:var(--label)}
 .anncard{background:var(--bg2);border-radius:30px;padding:18px 18px 16px}
