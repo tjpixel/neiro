@@ -118,15 +118,15 @@ function renderHoy(){
   if(done){
     h+='<div class="card" style="padding:18px 18px 18px 20px"><div class="row" style="align-items:flex-end;gap:10px"><div class="grow" style="padding-bottom:8px">'+
       '<p class="fn l2">Práctica hecha</p><h2 class="t1" style="margin-top:4px">¡Bien cantado!</h2><p class="sb l2" style="margin-top:2px">'+mt+' min hoy · '+C.thisWeek+' de '+perWeek()+' días esta semana</p></div>'+dkStage('cheer',1.55)+'</div>'+
-      '<div class="row" style="margin-top:18px"><button class="btn sec grow" onclick="startSession()">'+ic('play',18)+'Practicar otra vez</button>'+
+      '<div class="row" style="margin-top:18px"><button class="btn '+(SS.on||savedSess()?'pri':'sec')+' grow" onclick="startSession()">'+ic('play',18)+(SS.on||savedSess()?'Continuar':'Practicar otra vez')+'</button>'+
       '<button class="btn sec" style="width:54px;flex-shrink:0" onclick="openTodayMenu()" aria-label="Más opciones">'+ic('more',22)+'</button></div></div>';
   }else if(pday){
     h+='<div class="card" style="padding:18px 18px 18px 20px"><div class="row" style="align-items:flex-end;gap:10px"><div class="grow" style="padding-bottom:8px">'+
       '<p class="fn l2">Práctica de hoy</p><h2 class="t1" style="margin-top:4px">'+total+' minutos</h2>'+
-      '<p class="sb l2" style="margin-top:2px">'+plural(B.length,'bloque')+' · '+plural(nEx,'ejercicio')+'</p>'+
+      '<p class="sb l2" style="margin-top:2px">'+(!SS.on&&savedSess()?'Llevas '+mmss(savedSec(savedSess()))+' · sigue donde lo dejaste':plural(B.length,'bloque')+' · '+plural(nEx,'ejercicio'))+'</p>'+
       (classToday?'<span class="pill tint" style="margin-top:10px">'+ic(classLogged?'check':'cap',13,2.4)+(classLogged?'Clase apuntada':'Hoy tienes clase')+'</span>':'')+
       '</div>'+dkStage('stand',1.9)+'</div>'+
-      '<div class="row" style="margin-top:18px"><button class="btn pri grow" onclick="startSession()">'+ic('play',18)+(SS.on?'Continuar':'Empezar')+'</button>'+
+      '<div class="row" style="margin-top:18px"><button class="btn pri grow" onclick="startSession()">'+ic('play',18)+(SS.on||savedSess()?'Continuar':'Empezar')+'</button>'+
       '<button class="btn sec" style="width:54px;flex-shrink:0" onclick="openTodayMenu()" aria-label="Más opciones">'+ic('more',22)+'</button></div></div>';
   }else{
     const nx=nextPracticeDay();
@@ -970,10 +970,24 @@ function buildSteps(minsOverride){
 function startSession(short){
   if(SS.on){expandSession();return}
   closeSheet();
+  const sv=savedSess();if(sv&&!short){restoreSess(sv,true);toast('Sigues donde lo dejaste');return}
   Object.assign(SS,{on:true,min:false,steps:buildSteps(short),i:0,t0:Date.now(),used:[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:short||null});
   enterStep(true);$('session').classList.add('on');keepAwake(true);renderSession();renderAcc();
 }
-function sessPersist(){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,t0:SS.t0,mins:SS.mins}:null)}
+function sessPersist(out){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,left:stepLeft(),sec:(SS.steps[SS.i]||{}).sec,t0:SS.t0,mins:SS.mins,out:!!out}:null)}
+/* práctica que dejaste con «Salir» hoy: se puede seguir desde el mismo tiempo, sin sumar el rato fuera */
+function savedSess(){const st=PREF.get('sess',null);return st&&st.out&&st.d===T()?st:null}
+const savedSec=st=>(st.used||[]).reduce((a,b)=>a+(b||0),0)+Math.max(0,(st.sec||0)-(st.left||0));
+function restoreSess(st,run){
+  Object.assign(SS,{on:true,min:!run,steps:buildSteps(st.mins),i:Math.min(st.i||0,1e3),t0:st.t0||Date.now(),used:st.used||[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:st.mins||null});
+  if(SS.i>=SS.steps.length)SS.i=SS.steps.length-1;
+  const s=SS.steps[SS.i];if(st.sec)s.sec=st.sec;
+  enterStep(false);if(st.left!=null){SS.left=st.left;SS.beeped=st.left<=0}
+  if(run){SS.run=true;SS.endAt=Date.now()+SS.left*1000}
+  sessPersist();
+  if(run){$('session').classList.add('on');keepAwake(true);renderSession()}
+  renderAcc();
+}
 function enterStep(autostart){
   patStop();tunerStop();SS.holdOn=false;SS.pauseAt=0;SS.patWas=SS.tunWas=false;
   const s=SS.steps[SS.i];SS.left=s.sec;SS.beeped=false;SS.run=!!autostart;SS.endAt=Date.now()+SS.left*1000;
@@ -996,7 +1010,7 @@ function jumpStep(i){SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();SS.i=i;close
 function togglePause(){
   if(SS.run){
     SS.left=(SS.endAt-Date.now())/1000;SS.run=false;SS.pauseAt=Date.now();endPrev=null;
-    SS.patWas=PAT.on;SS.tunWas=TUN.on;patStop();tunerStop();
+    SS.patWas=PAT.on;SS.tunWas=TUN.on;patStop();tunerStop();sessPersist();
     renderSession();renderAcc();return;
   }
   SS.endAt=Date.now()+SS.left*1000;SS.run=true;
@@ -1098,7 +1112,14 @@ function openSessMenu(){
   openSheet(()=>({title:'Práctica',body:'<div class="pad"><p class="ghead" style="padding-left:16px">Ir a un paso</p><div class="group">'+SS.steps.map((s,i)=>
     '<button class="cell" onclick="jumpStep('+i+')"><span class="exn'+(i<SS.i?' done':'')+'">'+(i<SS.i?ic('check',14,2.8):(i+1))+'</span><div class="cb"><div class="tt"><p class="bd ell">'+esc(s.ex?exName(s.ex):s.bn)+'</p><p class="fn l2">'+s.bn+' · '+mmss(s.sec)+'</p></div>'+(i===SS.i?'<span class="pill tint">Ahora</span>':'')+'</div></button>').join('')+'</div>'+
     '<div class="group" style="margin-top:18px"><button class="cell" onclick="closeSheet();finishSession()"><span class="ic soft">'+ic('check',17,2.6)+'</span><div class="cb"><span class="tt bd">Terminar ahora y valorar</span></div></button>'+
-    '<button class="cell" onclick="closeSheet();quitSession()"><span class="ic gray">'+ic('out',17)+'</span><div class="cb"><div class="tt"><p class="bd">Salir sin guardar</p><p class="fn l2">No contará como práctica</p></div></div></button></div></div>'}));
+    '<button class="cell" onclick="exitSession()"><span class="ic gray">'+ic('out',17)+'</span><div class="cb"><div class="tt"><p class="bd">Salir y seguir más tarde</p><p class="fn l2">Se queda en '+mmss(practiceSec())+'; hoy sigues desde ahí</p></div></div></button>'+
+    '<button class="cell" onclick="confirmSheet(\'Descartar la práctica\',\'Lo que llevas hoy no contará como práctica.\',\'Descartar\',\'closeSheet();quitSession()\',true)"><span class="ic gray">'+ic('trash',17)+'</span><div class="cb"><div class="tt"><p class="bd red">Descartar la práctica</p><p class="fn l2">No contará como práctica</p></div></div></button></div></div>'}));
+}
+/* salir sin terminar: el reloj se queda quieto y lo practicado se guarda para seguir hoy */
+function exitSession(){
+  if(SS.run){SS.left=(SS.endAt-Date.now())/1000;SS.run=false}
+  sessPersist(true);clearInterval(SS.tIv);patStop();tunerStop();SS.on=false;SS.min=false;
+  $('session').classList.remove('on');keepAwake(false);closeSheet();render();renderAcc();toast('Guardada en '+mmss(savedSec(savedSess()))+' · sigue hoy cuando quieras');
 }
 function quitSession(){clearInterval(SS.tIv);patStop();tunerStop();SS.on=false;SS.min=false;$('session').classList.remove('on');keepAwake(false);PREF.set('sess',null);render()}
 function finishSession(){
@@ -1154,11 +1175,7 @@ function startApp(){
   if(!(DB.profile&&DB.profile.done)){openOnb();return}
   showApp();go('hoy');
   const st=PREF.get('sess',null);
-  if(st&&st.d===T()){
-    Object.assign(SS,{on:true,min:true,steps:buildSteps(st.mins),i:Math.min(st.i||0,1e3),t0:st.t0||Date.now(),used:st.used||[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',mins:st.mins||null});
-    if(SS.i>=SS.steps.length)SS.i=SS.steps.length-1;
-    enterStep(false);render();
-  }
+  if(st&&st.d===T()&&!st.out){restoreSess(st,false);render()}
 }
 function boot(){
   applyTheme();
@@ -1166,7 +1183,7 @@ function boot(){
   document.addEventListener('visibilitychange',()=>{
     if(!started)return;
     if(document.visibilityState==='visible'){if(SS.on&&!SS.min)keepAwake(true);if(SS.on)tick();if(T()!==curDate)render()}
-    else{patStop()}
+    else{patStop();if(SS.on&&SS.ph==='step')sessPersist()}
   });
   if(S.get(KEY+'_mode')==='local')startApp();else showWelcome();
 }
