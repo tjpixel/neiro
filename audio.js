@@ -11,10 +11,12 @@ function ac(){
 document.addEventListener('pointerdown',()=>ac(),{passive:true});
 
 /* ═════ PIANO ═════ un tono de piano sencillo: tres parciales con caída */
-let MASTER=null;
+let MASTER=null,ROUTE=null;
 function master(){const c=ac();if(!c)return null;if(!MASTER){MASTER=c.createGain();MASTER.gain.value=.9;MASTER.connect(c.destination)}return MASTER}
+/* el patrón suena por su propio canal: así, al parar o pausar, se apaga al momento lo que ya estaba programado */
+const out_=()=>ROUTE||master();
 function pianoNote(m,t,dur,vol){
-  const c=ac(),out=master();if(!c||!out)return;
+  const c=ac(),out=out_();if(!c||!out)return;
   const f=hzOf(m),g=c.createGain(),v=vol||.26,end=t+Math.max(.15,dur);
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.012);
   g.gain.exponentialRampToValueAtTime(v*.45,t+.25);g.gain.exponentialRampToValueAtTime(.0008,end+.35);
@@ -24,7 +26,7 @@ function pianoNote(m,t,dur,vol){
   });
 }
 function glideNote(m1,m2,t,dur){
-  const c=ac(),out=master();if(!c||!out)return;
+  const c=ac(),out=out_();if(!c||!out)return;
   const g=c.createGain(),o=c.createOscillator();o.type='triangle';
   o.frequency.setValueAtTime(hzOf(m1),t);o.frequency.exponentialRampToValueAtTime(hzOf(m2),t+dur);
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.2,t+.05);g.gain.setValueAtTime(.2,t+dur-.05);g.gain.linearRampToValueAtTime(0,t+dur+.1);
@@ -49,14 +51,17 @@ function playPattern(e,tonic,t0){
   else e.pat.forEach((k,i)=>{const len=e.hold&&i===0?e.hold:(e.stac?b*.35:b*.95);pianoNote(tonic+k,t,len);t+=e.hold&&i===0?e.hold:b});
   return t-(t0||c.currentTime);
 }
-const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null};
-function patStart(e,tonic,cb){
+const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null};
+/* dir: 1 sube, -1 baja (al seguir tras una pausa, continúa en el sentido en que iba) */
+function patStart(e,tonic,cb,dir){
   patStop();if(!e||!e.pat)return;
-  PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=1;PAT.cb=cb||null;patLoop();
+  const c=ac(),m=master();
+  if(c&&m){PAT.bus=c.createGain();PAT.bus.gain.value=1;PAT.bus.connect(m)}
+  PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;patLoop();
 }
 function patLoop(){
   if(!PAT.on)return;
-  const len=playPattern(PAT.e,PAT.tonic);
+  ROUTE=PAT.bus;const len=playPattern(PAT.e,PAT.tonic);ROUTE=null;
   if(PAT.cb)PAT.cb(PAT.tonic);
   PAT.timer=setTimeout(()=>{
     if(!PAT.on)return;
@@ -67,7 +72,12 @@ function patLoop(){
     PAT.tonic+=PAT.dir;patLoop();
   },(len+.5)*1000);
 }
-function patStop(){PAT.on=false;clearTimeout(PAT.timer);PAT.timer=null;if(PAT.cb)PAT.cb(PAT.tonic)}
+function patStop(){
+  PAT.on=false;clearTimeout(PAT.timer);PAT.timer=null;
+  const b=PAT.bus,c=AC;PAT.bus=null;
+  if(b&&c){try{const t=c.currentTime;b.gain.cancelScheduledValues(t);b.gain.setValueAtTime(b.gain.value,t);b.gain.linearRampToValueAtTime(0,t+.04);setTimeout(()=>{try{b.disconnect()}catch(e){}},120)}catch(e){}}
+  if(PAT.cb)PAT.cb(PAT.tonic);
+}
 function patShift(d){PAT.tonic=Math.max(36,Math.min(84,PAT.tonic+d));return PAT.tonic}
 
 /* ═════ GRABADORA ═════ */

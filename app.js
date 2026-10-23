@@ -435,11 +435,11 @@ function playerHTML(id,tonic,on,small){
     '<div class="grow"><p class="hl num" id="pvT">'+noteName(tonic)+'</p><p class="c1 l2">'+(on?'Sube medio tono en cada vuelta':'Piano de referencia')+'</p></div>'+
     '<button class="mini" style="background:var(--fill2)" onclick="pvShift(-1)" aria-label="Bajar medio tono">'+ic('dn',17,2.4)+'</button><button class="mini" style="background:var(--fill2)" onclick="pvShift(1)" aria-label="Subir medio tono">'+ic('up',17,2.4)+'</button></div>';
 }
-function pvToggle(){
+function pvToggle(dir){
   if(PAT.on){patStop();drawPlayerState();return}
   if(SS.on&&!SS.min&&SS.ph==='step'&&!SS.run)togglePause();
   const e=Object.assign({id:PV.id},exBase(PV.id));
-  patStart(e,PV.tonic,t=>{PV.tonic=t;const el=$('pvT');if(el)el.textContent=noteName(t)});drawPlayerState();
+  patStart(e,PV.tonic,t=>{PV.tonic=t;const el=$('pvT');if(el)el.textContent=noteName(t)},dir);drawPlayerState();
 }
 function pvShift(d){PV.tonic=Math.max(36,Math.min(84,PV.tonic+d));if(PAT.on)PAT.tonic=PV.tonic;else tone(PV.tonic,.9);const el=$('pvT');if(el)el.textContent=noteName(PV.tonic)}
 function drawPlayerState(){const b=$('pvBtn');if(!b)return;b.classList.toggle('on',PAT.on);b.innerHTML=ic(PAT.on?'pause':'play',20);const s=b.parentNode.querySelector('.c1');if(s)s.textContent=PAT.on?'Sube medio tono en cada vuelta':'Piano de referencia'}
@@ -1010,14 +1010,14 @@ function jumpStep(i){SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();SS.i=i;close
 function togglePause(){
   if(SS.run){
     SS.left=(SS.endAt-Date.now())/1000;SS.run=false;SS.pauseAt=Date.now();endPrev=null;
-    SS.patWas=PAT.on;SS.tunWas=TUN.on;patStop();tunerStop();sessPersist();
+    SS.patWas=PAT.on;SS.patDir=PAT.dir;SS.tunWas=TUN.on;patStop();tunerStop();sessPersist();
     renderSession();renderAcc();return;
   }
   SS.endAt=Date.now()+SS.left*1000;SS.run=true;
   if(SS.holdOn&&SS.pauseAt)SS.holdT0+=Date.now()-SS.pauseAt;
   SS.pauseAt=0;const pw=SS.patWas,tw=SS.tunWas;SS.patWas=SS.tunWas=false;
   renderSession();renderAcc();
-  if(pw&&!PAT.on&&!SS.min)pvToggle();
+  if(pw&&!PAT.on&&!SS.min)pvToggle(SS.patDir);
   if(tw&&!TUN.on&&!SS.min)tunerGo().then(ok=>{if(ok)renderSession()});
 }
 function addMin(){endPrev=null;if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;tick()}
