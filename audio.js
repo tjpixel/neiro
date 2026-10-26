@@ -23,7 +23,7 @@ const out_=()=>ROUTE||master();
 /* ajustes del piano; si no hay nada elegido: suave y tranquila para quien está empezando, piano y normal para el resto */
 function pianoCfg(){
   const c=(typeof DB!=='undefined'&&DB.cfg&&DB.cfg.pno)||{},ini=typeof DB==='undefined'||!DB.profile||!DB.profile.lvl||DB.profile.lvl==='ini';
-  return{snd:c.snd||(ini?'suave':'piano'),vel:c.vel||(ini?'tranq':'normal'),view:c.view==='tec'?'tec':'esc',fin:FIN_OPTS.includes(c.fin)?c.fin:'cadencia'};
+  return{snd:c.snd||(ini?'suave':'piano'),vel:c.vel||(ini?'tranq':'normal'),view:c.view==='tec'?'tec':'esc',fin:FIN_OPTS.includes(c.fin)?c.fin:'cadencia',voz:!!c.voz};
 }
 const VEL={tranq:.7,normal:1};
 const FIN_OPTS=['cadencia','cuenco','campana','kalimba','soplo','nada'];
@@ -143,13 +143,14 @@ function playPattern(e,tonic,t0){
 }
 /* techo del patrón: lo más agudo de tu rango menos un semitono, o tu «nota más aguda cómoda» del ejercicio */
 function patTop(e){const r=myRange();return Math.min(r.hi-1,midiOf(DB.extop[(e&&e.id)||'']||'')||99)}
-const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null,round:null,ending:false,onEnd:null};
+const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null,round:null,ending:false,onEnd:null,req:0};
 /* dir: 1 sube, -1 baja (al seguir tras una pausa, continúa en el sentido en que iba) */
 function patStart(e,tonic,cb,dir){
   patStop();if(!e||!e.pat)return;
   const c=ac(),m=master();
   if(c&&m){PAT.bus=c.createGain();PAT.bus.gain.value=1;PAT.bus.connect(m)}
   PAT.ending=false;PAT.onEnd=null;PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;patLoop();
+  if(vozWanted())vozStart();
 }
 function patLoop(){
   if(!PAT.on)return;
@@ -167,6 +168,7 @@ function patLoop(){
 /* acaba la vuelta que está sonando y se para (al acabarse el tiempo del paso: sin cortar en seco) */
 function patFinish(onEnd){if(!PAT.on){if(onEnd)onEnd();return}PAT.ending=true;PAT.onEnd=onEnd||null}
 function patStop(){
+  PAT.req++;if(VOZ.on||VOZ.stream)vozLater();
   PAT.on=false;PAT.ending=false;PAT.onEnd=null;PAT.round=null;clearTimeout(PAT.timer);PAT.timer=null;
   const b=PAT.bus,c=AC;PAT.bus=null;
   if(b&&c){try{const t=c.currentTime;b.gain.cancelScheduledValues(t);b.gain.setValueAtTime(b.gain.value,t);b.gain.linearRampToValueAtTime(0,t+.04);setTimeout(()=>{try{b.disconnect()}catch(e){}},120)}catch(e){}}
@@ -217,7 +219,7 @@ const TUN_WIN=350;              // ms que se promedian para la aguja
 let TUN_MUTE=0;                 // hasta cuándo (tiempo del AudioContext) suena la referencia
 function tunMute(until){TUN_MUTE=Math.max(TUN_MUTE,until)}
 async function tunerStart(cb){
-  tunerStop();
+  tunerStop();vozClose();
   const stream=await micStream(),c=ac();
   TUN.stream=stream;TUN.src=c.createMediaStreamSource(stream);TUN.an=c.createAnalyser();TUN.an.fftSize=2048;
   TUN.src.connect(TUN.an);TUN.buf=new Float32Array(TUN.an.fftSize);TUN.cb=cb;TUN.on=true;TUN.hist=[];tunReset();
@@ -293,6 +295,104 @@ function detectPitch(x,sr){
   const a=nsdf[t-1],b=nsdf[t],c2=nsdf[t+1],den=a-2*b+c2;if(den)t+=.5*(a-c2)/den;
   const f=sr/t;return f>=TUN_LO&&f<=TUN_HI?f:null;
 }
+
+/* ═════ TU VOZ ENCIMA DE LA GUÍA ═════
+   Con «Tu voz» encendido (botón del micro en el reproductor, o Tú → Piano de referencia), mientras suena el piano
+   se escucha la voz con el mismo detector que el afinador y la guía la dibuja encima como una línea naranja.
+   A diferencia del afinador, aquí no se deja de escuchar mientras suena el piano (si no, no habría línea al cantar con él).
+   Por eso, la primera vez y cada vez que cambian los auriculares, se comprueba si el micro oye el piano:
+   una nota corta en silencio. Si la oye (altavoz), la línea solo se dibuja en los huecos del piano,
+   para no hacer pasar el piano por tu voz. Con auriculares se dibuja todo el rato. */
+const VOZ={on:false,stream:null,src:null,an:null,buf:null,iv:null,pts:[],raw:[],cur:null,jump:0,lag:.02,okAt:0,
+  ear:null,     // 'ok': el micro no oye el piano · 'bleed': lo oye (altavoz) · null: sin comprobar
+  st:'',        // 'check' comprobando · 'nomic' sin micro
+  tok:0,chk:null,off:0,sig:''};
+const vozWanted=()=>pianoCfg().voz;
+const pcf=x=>((x%12)+12)%12;
+async function vozOpen(){
+  clearTimeout(VOZ.off);VOZ.off=0;
+  if(VOZ.stream&&VOZ.stream.active&&VOZ.an)return;
+  vozClose();
+  const stream=await micStream(),c=ac();
+  VOZ.stream=stream;VOZ.src=c.createMediaStreamSource(stream);VOZ.an=c.createAnalyser();VOZ.an.fftSize=2048;
+  VOZ.src.connect(VOZ.an);VOZ.buf=new Float32Array(VOZ.an.fftSize);
+  try{const s=stream.getAudioTracks()[0].getSettings();VOZ.lag=Math.min(.2,s.latency||.02)}catch(e){VOZ.lag=.02}
+}
+function vozClose(){
+  clearTimeout(VOZ.off);VOZ.off=0;clearInterval(VOZ.iv);VOZ.iv=null;VOZ.on=false;VOZ.cur=null;
+  try{VOZ.src&&VOZ.src.disconnect()}catch(e){}
+  if(VOZ.stream)VOZ.stream.getTracks().forEach(t=>t.stop());VOZ.stream=null;VOZ.src=null;VOZ.an=null;
+}
+/* empieza a escuchar mientras suena el piano */
+async function vozStart(){
+  if(!vozWanted()||TUN.on)return;
+  try{await vozOpen()}catch(e){VOZ.st='nomic';vozNote();return}
+  if(!PAT.on||!vozWanted()){vozLater();return}
+  VOZ.on=true;VOZ.raw=[];VOZ.jump=0;if(VOZ.st==='nomic')VOZ.st='';
+  if(!VOZ.iv)VOZ.iv=setInterval(vozTick,40);
+  vozNote();
+}
+/* al parar el piano sigue un momento (la última nota que alargas) y después suelta el micro */
+function vozLater(){clearTimeout(VOZ.off);VOZ.off=setTimeout(()=>{if(!PAT.on&&!VOZ.chk)vozClose();vozNote()},900)}
+function vozTick(){
+  if(!VOZ.an||VOZ.chk)return;
+  const c=ac(),now=c.currentTime,wall=performance.now();
+  /* el momento del piano al que corresponde lo que se canta ahora: el mismo reloj que usa la guía
+     (retardo del altavoz o auriculares, del micro, media ventana de análisis y la mediana de 3 lecturas) */
+  const t=now-Math.min(.5,(c.outputLatency||0)+(c.baseLatency||0))-VOZ.lag-VOZ.an.fftSize/c.sampleRate/2-.04;
+  let f=null;
+  /* sin comprobar o con altavoz: no se escucha mientras suena el piano (lo confundiría con tu voz) */
+  if(VOZ.ear==='ok'||now>=TUN_MUTE){VOZ.an.getFloatTimeDomainData(VOZ.buf);f=detectPitch(VOZ.buf,c.sampleRate)}
+  if(f){
+    const m=midiOfHz(f),r=VOZ.raw=VOZ.raw.filter(x=>wall-x.w<160);
+    /* un salto de más de 7 semitonos solo se cree si se repite 3 veces (como en el afinador) */
+    if(r.length&&Math.abs(m-tunMed(r.map(x=>x.m)))>7){if(++VOZ.jump<3)return;r.length=0}
+    VOZ.jump=0;r.push({w:wall,m});if(r.length>3)r.shift();
+    const sm=tunMed(r.map(x=>x.m));
+    VOZ.pts.push({t,m:sm});VOZ.cur={t,m:sm,at:wall};VOZ.okAt=wall;
+  }else if(wall-VOZ.okAt>150){
+    /* un hueco (coger aire, una consonante larga) corta la línea */
+    const l=VOZ.pts[VOZ.pts.length-1];if(l&&l.m!=null)VOZ.pts.push({t,m:null});
+    if(wall-VOZ.okAt>220)VOZ.cur=null;
+  }
+  if(VOZ.pts.length>1500)VOZ.pts=VOZ.pts.filter(x=>x.t>now-40);
+}
+/* ¿el micro oye el piano? Una nota corta en el centro de tu rango, en silencio.
+   Devuelve 'ok', 'bleed', 'nomic' o null si se cancela. */
+function vozCheck(){
+  if(VOZ.chk)return VOZ.chk;
+  const tok=++VOZ.tok;VOZ.st='check';
+  VOZ.chk=(async()=>{
+    try{await vozOpen()}catch(e){return 'nomic'}
+    const c=ac();if(!c)return null;
+    if(c.state!=='running'){try{await c.resume()}catch(e){}}
+    if(tok!==VOZ.tok||c.state!=='running')return null;
+    const r=myRange(),m=Math.round((r.lo+r.hi)/2),t0=c.currentTime+.1;
+    pianoNote(m,t0,1.1);
+    const hit=await new Promise(res=>{let h=0;const iv=setInterval(()=>{
+      if(tok!==VOZ.tok||!VOZ.an){clearInterval(iv);res(-1);return}
+      const t=c.currentTime;if(t<t0+.25)return;if(t>t0+1.15){clearInterval(iv);res(h);return}
+      VOZ.an.getFloatTimeDomainData(VOZ.buf);const f=detectPitch(VOZ.buf,c.sampleRate);
+      if(f){const d=pcf(midiOfHz(f)-m);if(d<.6||d>11.4)h++}   // la nota de la prueba (en cualquier octava)
+    },40)});
+    if(hit<0)return null;
+    return hit>=4?'bleed':'ok';
+  })().then(x=>{
+    if(tok!==VOZ.tok)return null;
+    VOZ.chk=null;VOZ.st=x==='nomic'?'nomic':'';
+    if(x==='ok'||x==='bleed'){VOZ.ear=x;vozSig().then(s=>VOZ.sig=s)}
+    if(!PAT.on)vozLater();vozNote();return x;
+  });
+  vozNote();
+  return VOZ.chk;
+}
+function vozCancel(){if(VOZ.chk){VOZ.tok++;VOZ.chk=null;VOZ.st='';if(!PAT.on)vozLater();vozNote()}}
+/* si cambian los auriculares o el altavoz, hay que volver a comprobar */
+async function vozSig(){try{return (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind!=='videoinput').map(d=>d.kind+':'+d.deviceId+':'+d.label).sort().join('|')}catch(e){return ''}}
+if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>{
+  if(!VOZ.ear)return;vozSig().then(s=>{if(VOZ.sig&&s&&s!==VOZ.sig){VOZ.ear=null;VOZ.sig='';vozNote()}});
+});
+function vozNote(){if(typeof vozUI==='function')vozUI()}
 
 /* ═════ REPRODUCIR GRABACIONES ═════ */
 const AURL={};

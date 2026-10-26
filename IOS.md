@@ -10,6 +10,7 @@ La web de pruebas fija el diseño, los flujos y el formato de datos. En SwiftUI 
 | Piano de referencia (Web Audio) | AVAudioEngine con un sampler de piano real |
 | Escalera y teclado del piano (`escalera.js`, SVG) | Vista de SwiftUI (Canvas) que lee el mismo plan de la vuelta (`patPlan`): lo encendido es lo que suena |
 | Afinador (McLeod con FFT, media de 0,35 s en pantalla, margen por nivel, no escucha mientras suena la referencia) | AVAudioEngine + vDSP (Accelerate) para la misma detección y las mismas reglas; con auriculares podría escuchar también mientras suena el piano. Opción futura: modelo tipo CREPE en Core ML |
+| «Tu voz encima» (línea naranja de lo que cantas sobre la escalera; con altavoz solo en los huecos del piano, tras comprobar con una nota si el micro lo oye) | Mismo detector en vDSP; en iOS se sabe si hay auriculares (AVAudioSession.currentRoute), así que no hace falta la nota de prueba, y con el altavoz se puede usar el modo de voz con cancelación de eco |
 | Grabadora (MediaRecorder) | AVAudioRecorder, sigue grabando con la pantalla apagada |
 | Temporizador de la práctica | **Actividad en vivo**: bloque y tiempo en la pantalla de bloqueo y la Dynamic Island |
 | Aviso «Apunta la clase de hoy» | **Notificación** al acabar la hora de clase |

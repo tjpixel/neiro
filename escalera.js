@@ -6,6 +6,7 @@
    · Teclado: piano en horizontal con las teclas de esta vuelta marcadas por grado y su nombre, para tocarlo.
      Encima, el orden de las notas. Se puede tocar una tecla para oírla.
    Las dos leen el mismo plan de la vuelta que toca el piano (PAT.round, de patPlan), así que lo encendido es lo que se oye.
+   Con «Tu voz» encendido, encima se dibuja lo que cantas (línea naranja), con el mismo reloj que lo encendido.
    En iOS será una vista de SwiftUI (Canvas) alimentada por ese mismo plan. */
 'use strict';
 
@@ -56,9 +57,11 @@ function guideHTML(id){
 /* la guía entera, con su estado (vista, tónica, ventana y ritmo con que se dibujó) */
 function gdMake(id,e){
   const v=gView(),tonic=gdTonic(id,e),pl=gdPlan(id,e),w=gdWin(e,tonic,v),inf=gdInfo(e,tonic,id);
+  const vz=pianoCfg().voz?1:0;
   const html='<div class="ghd"><span class="pill '+inf.c+'" data-g="pill">'+inf.t+'</span><div class="gtop"><p class="c1 l2">Más aguda</p><p class="fn semi num" data-g="top">'+inf.top+'</p></div></div>'+
-    (v==='tec'?tecHTML(e,tonic,w,pl):escHTML(e,tonic,w,pl,++GD_N));
-  return{html,pl,st:{v,t:tonic,a:w.a,b:w.b,full:w.full,sig:plSig(pl),top:patTop(e)}};
+    (v==='tec'?tecHTML(e,tonic,w,pl,vz):escHTML(e,tonic,w,pl,++GD_N,vz))+
+    (vz?'<div class="gvoz"><i></i><span class="fn semi">Tu voz</span><span class="fn semi num vn" data-g="vozn"></span><span class="fn l2 vs" data-g="vozs"></span></div>':'');
+  return{html,pl,st:{v,t:tonic,a:w.a,b:w.b,full:w.full,sig:plSig(pl),top:patTop(e),vz}};
 }
 /* rehace la guía en su sitio */
 function gdBuild(el,id,e){const g=gdMake(id,e);el.innerHTML=g.html;el._st=g.st;gdParts(el,e,g.pl)}
@@ -86,7 +89,7 @@ function escGhost(pl){
     ?'<line x1="'+x.x0.toFixed(1)+'" y1="'+gyc(x.k0)+'" x2="'+x.x1.toFixed(1)+'" y2="'+gyc(x.k1)+'" stroke="var(--label3)" stroke-width="1" stroke-dasharray="2 2"/>'
     :'<rect x="'+x.x.toFixed(1)+'" y="'+(-x.k*GROW+1.5)+'" width="'+x.w.toFixed(1)+'" height="'+(GROW-3)+'" rx="'+((GROW-3)/2)+'" fill="none" stroke="var(--label3)" stroke-width=".8" stroke-dasharray="2 2"/>').join('');
 }
-function escHTML(e,tonic,w,pl,n){
+function escHTML(e,tonic,w,pl,n,vz){
   const r=myRange(),top=patTop(e),H=(w.b-w.a+1)*GROW,yT=m=>(w.b-m)*GROW,S=escShapes(pl);
   let s='<svg class="gsvg" viewBox="0 0 '+GW+' '+H+'" role="img" aria-label="'+esc(gdAria(e,tonic))+'"><defs><clipPath id="gdc'+n+'" clipPathUnits="userSpaceOnUse"><rect data-g="clip" x="0" y="-4000" width="0" height="8000"/></clipPath></defs>';
   /* filas de las teclas negras y una línea en cada Do, como en una pianola */
@@ -122,7 +125,8 @@ function escHTML(e,tonic,w,pl,n){
   return s+'<g data-g="ghost"></g><g data-g="pat" class="gpat" style="transform:translate(0px,'+yT(tonic)+'px)">'+
     S.sh.map(x=>escShape(x,'var(--g-bar)')).join('')+
     '<g clip-path="url(#gdc'+n+')">'+S.sh.map(x=>escShape(x,'var(--g-done)','gl')).join('')+'</g>'+lab+
-    '<circle data-g="dot" r="5" fill="var(--g-now)" stroke="var(--bg2)" stroke-width="1.5" opacity="0"/></g></svg>';
+    '<circle data-g="dot" r="5" fill="var(--g-now)" stroke="var(--bg2)" stroke-width="1.5" opacity="0"/></g>'+
+    (vz?'<g data-g="vozp"></g><path data-g="voz" class="gvozl" d=""/><circle data-g="vozd" class="gvozd" r="4" opacity="0"/>':'')+'</svg>';
 }
 
 /* ── teclado (horizontal) ── */
@@ -134,7 +138,7 @@ function tecKeys(w){
   for(let m=a;m<=b;m++)if(isBlk(m))x[m]=x[m-1]+kw;   // centro de la tecla negra, entre sus dos blancas
   return{a,b,wh,kw,bw:kw*.6,x};
 }
-function tecHTML(e,tonic,w,pl){
+function tecHTML(e,tonic,w,pl,vz){
   const r=myRange(),K=tecKeys(w),names=K.kw>=17,inR=m=>m>=r.lo&&m<=r.hi;
   /* el orden: acorde, nota de inicio (en tranquila) y el patrón; en las sirenas, los puntos de giro */
   let q='<span class="wd" data-i="c">Acorde</span>'+(pl.pre?'<span data-i="p">'+degOf(pl.pre.k)+'</span><i></i>':'');
@@ -149,6 +153,8 @@ function tecHTML(e,tonic,w,pl){
   for(let m=K.a;m<=K.b;m++)if(isBlk(m)){const x=K.x[m]-K.bw/2;
     s+='<g opacity="'+(inR(m)?1:.4)+'"><rect data-m="'+m+'" data-k="'+m+'" x="'+x.toFixed(1)+'" y="0" width="'+K.bw.toFixed(1)+'" height="'+TBH+'" rx="2.5" fill="var(--kb)"/>'+
       '<text class="gkdeg blk" data-d="'+m+'" x="'+K.x[m].toFixed(1)+'" y="'+(TBH-10)+'" pointer-events="none"></text></g>'}
+  /* tu voz: una franja naranja encima de las teclas, en la altura exacta que cantas (sin tapar grado ni nombre) */
+  if(vz)s+='<rect data-g="vozk" class="gvozk" x="-3" y="3" width="6" height="'+(TKH-36)+'" rx="3" opacity="0"/>';
   return s+'</svg>';
 }
 function gdTap(ev){const k=ev.target.closest('[data-m]');if(k)tone(+k.dataset.m,.9)}
@@ -158,7 +164,9 @@ function gdParts(el,e,pl){
   const q=s=>el.querySelector('[data-g="'+s+'"]');
   const P={pill:q('pill'),top:q('top'),pat:q('pat'),ghost:q('ghost'),clip:q('clip'),dot:q('dot'),
     lit:[...el.querySelectorAll('.gl')],lab:[...el.querySelectorAll('.gdeg[data-i]')],chips:[...el.querySelectorAll('.gseq [data-i]')],
-    deg:[...el.querySelectorAll('[data-d]')],keys:{},S:escShapes(pl),pl};
+    deg:[...el.querySelectorAll('[data-d]')],keys:{},S:escShapes(pl),pl,
+    voz:q('voz'),vozp:q('vozp'),vozd:q('vozd'),vozk:q('vozk'),vozn:q('vozn'),vozs:q('vozs')};
+  if(el._st.v==='tec')P.K=tecKeys(el._st);
   el.querySelectorAll('[data-k]').forEach(k=>P.keys[k.dataset.k]=k);
   el._p=P;el._last={};el._mk={};
   if(el._st.v==='tec')tecMark(el,e,el._st.t);
@@ -200,7 +208,7 @@ function gdTick(el){
   const v=gView(),tonic=gdTonic(id,e),pl=gdPlan(id,e),st=el._st;
   /* otra vista, otro ritmo (velocidad) o el patrón se sale de lo que se ve: se rehace */
   const nw=gdWin(e,tonic,v),fits=tonic+patLo(e)>st.a&&tonic+patHi(e)<st.b;
-  if(st.v!==v||st.sig!==plSig(pl)||st.top!==patTop(e)||!fits||(st.full&&(nw.a!==st.a||nw.b!==st.b))){gdBuild(el,id,e);return}
+  if(st.v!==v||st.vz!==(pianoCfg().voz?1:0)||st.sig!==plSig(pl)||st.top!==patTop(e)||!fits||(st.full&&(nw.a!==st.a||nw.b!==st.b))){gdBuild(el,id,e);return}
   const P=el._p;
   /* vuelta nueva o cambio de tónica: la escalera se mueve y deja una sombra donde estaba */
   if(st.t!==tonic){
@@ -239,6 +247,73 @@ function gdTick(el){
     const ord=P.chips.map(x=>x.dataset.i);
     const ci=cur==null?-1:(cur==='end'?ord.length:ord.indexOf(cur==='c'||cur==='p'||!pl.glide?cur:String(+cur+1)));
     gdSet(el,'chip',ci,()=>P.chips.forEach((x,j)=>{x.classList.toggle('now',j===ci);x.classList.toggle('done',ci>=0&&j<ci)}));
+  }
+  if(st.vz)gdVoz(el,v,R);
+}
+
+/* ═════ TU VOZ ENCIMA ═════
+   Escalera: la línea de lo que has cantado en esta vuelta, con el mismo eje de tiempo que los peldaños
+   y la altura exacta (no redondeada a la nota). Al empezar otra vuelta, la anterior se va con su sombra.
+   Teclado: una franja naranja sobre las teclas, en la altura que cantas ahora. */
+/* dónde cae en la escalera el instante t de la vuelta R (null si queda fuera) */
+function gdX(R,t){
+  const pl=R.pl,S=R._S||(R._S=escShapes(pl)),u=t-R.s;if(u<0)return null;
+  const p=pl.pre?S.sh.find(x=>x.i==='p'):null,x1=p?p.x:S.PX;
+  if(u<pl.cd)return GGX+u/pl.cd*(x1-4-GGX);
+  if(p&&u<pl.tp)return p.x+(u-pl.cd)/(pl.tp-pl.cd)*(S.PX-4-p.x);
+  const tr=u-pl.tp;if(tr>pl.D+.35)return null;
+  return Math.min(GW-1,S.PX+tr/pl.D*S.PW);
+}
+/* trazo de la voz en una vuelta: se corta en cada hueco */
+function vozPath(R,yv){
+  let d='',pen=false,lt=-9;
+  for(const p of VOZ.pts){
+    if(p.t<R.s-.05)continue;
+    const x=p.m==null?null:gdX(R,p.t);
+    if(x==null){if(p.t>R.s+R.pl.tp+R.pl.D+.4)break;pen=false;continue}
+    const y=yv(p.m).toFixed(1);
+    if(pen&&p.t-lt<.15)d+='L'+x.toFixed(1)+' '+y;else d+='M'+x.toFixed(1)+' '+y+'l.01 0';
+    pen=true;lt=p.t;
+  }
+  return d;
+}
+/* centro de la tecla de la nota m (con decimales, entre dos teclas) en el teclado horizontal */
+function tecXc(K,m){
+  const c=k=>K.x[k]==null?null:(isBlk(k)?K.x[k]:K.x[k]+K.kw/2),a=Math.floor(m),f=m-a,x0=c(a),x1=c(a+1);
+  if(x0==null||x1==null)return null;return x0+(x1-x0)*f;
+}
+function vozTxt(cur){
+  const chk='<button class="link" onclick="vozRetry()">Comprobar</button>';
+  if(VOZ.st==='check')return 'Comprobando el micro · no cantes un momento';
+  if(VOZ.st==='nomic')return 'Sin acceso al micro';
+  if(VOZ.ear==='bleed')return 'El micro oye el altavoz: ponte auriculares · '+chk;
+  if(!PAT.on)return 'Aparece al tocar el piano';
+  if(VOZ.ear==null)return 'Cambió el sonido · '+chk;
+  return cur?'':'Canta encima';
+}
+function gdVoz(el,v,R){
+  const P=el._p,st=el._st,wall=performance.now(),cur=VOZ.cur&&wall-VOZ.cur.at<220?VOZ.cur:null;
+  gdSet(el,'vozs',vozTxt(cur),x=>{if(P.vozs)P.vozs.innerHTML=x});
+  gdSet(el,'vozn',cur?noteName(Math.round(cur.m)):'',x=>{if(P.vozn)P.vozn.textContent=x});
+  if(v==='esc'){
+    if(!P.voz)return;
+    const yv=m=>(st.b-m)*GROW+GROW/2;
+    /* vuelta nueva: la línea de la anterior se queda un momento y se va con su sombra */
+    if(R&&el._vs!==R.s){
+      if(el._vR&&P.vozp){const d=vozPath(el._vR,yv);P.vozp.innerHTML=d?'<path class="gvozl old" d="'+d+'"/>':''}
+      el._vR=R;el._vs=R.s;
+    }
+    /* con el piano parado se queda a la vista la última vuelta */
+    const Rr=R||el._vR,lp=VOZ.pts[VOZ.pts.length-1];
+    gdSet(el,'vozl',Rr?Rr.s+'|'+(lp?lp.t:0)+'|'+st.b:'',()=>P.voz.setAttribute('d',Rr?vozPath(Rr,yv):''));
+    const x=cur&&R?gdX(R,cur.t):null;
+    if(x!=null){P.vozd.setAttribute('cx',x.toFixed(1));P.vozd.setAttribute('cy',yv(cur.m).toFixed(1))}
+    gdSet(el,'vozd',x!=null?1:0,o=>P.vozd.setAttribute('opacity',o));
+  }else{
+    if(!P.vozk||!P.K)return;
+    const x=cur?tecXc(P.K,cur.m):null;
+    if(x!=null)P.vozk.setAttribute('x',(x-3).toFixed(1));
+    gdSet(el,'vozk',x!=null?.9:0,o=>P.vozk.setAttribute('opacity',o));
   }
 }
 requestAnimationFrame(gdFrame);

@@ -429,25 +429,63 @@ function confirmSheet(title,text,btn,fn,danger){
 }
 
 /* ═════ EJERCICIO ═════ */
-let PV={id:null,tonic:48};
+let PV={id:null,tonic:48,wait:false};
 /* con la práctica minimizada, su reproductor sigue en la página: los controles se buscan en el que se ve */
 const $vis=id=>{for(const x of document.querySelectorAll('[id="'+id+'"]'))if(x.getClientRects().length)return x;return $(id)};
 /* reproductor del patrón: arriba la guía (escalera o teclado, según Tú → Piano de referencia), abajo los controles */
-const pvSub=on=>on?'Tónica de esta vuelta':'Piano de referencia';
+const pvSub=on=>VOZ.st==='check'?'Comprobando el micro…':(on?'Tónica ahora':'Piano de referencia');
+const vozBtn=()=>{const on=pianoCfg().voz;return '<button class="mini vozb'+(on?' on':'')+'" id="pvVoz" onclick="vozToggle()" aria-pressed="'+on+'" aria-label="'+(on?'Quitar tu voz de la guía':'Dibujar tu voz encima de la guía')+'">'+ic('mic',17,2.2)+'</button>'};
 function playerHTML(id,tonic,on,small){
   return '<div class="pcard"'+(small?' style="background:var(--sheet2)"':'')+'>'+guideHTML(id)+
     '<div class="player"><button class="playbtn'+(on?' on':'')+'" id="pvBtn" onclick="pvToggle()" aria-label="'+(on?'Parar el piano':'Tocar el patrón')+'">'+ic(on?'pause':'play',20)+'</button>'+
-    '<div class="grow"><p class="hl num" id="pvT">'+noteName(tonic)+'</p><p class="c1 l2">'+pvSub(on)+'</p></div>'+
+    '<div class="grow" style="min-width:0"><p class="hl num" id="pvT">'+noteName(tonic)+'</p><p class="c1 l2 ell">'+pvSub(on)+'</p></div>'+vozBtn()+
     '<button class="mini" style="background:var(--fill2)" onclick="pvShift(-1)" aria-label="Bajar medio tono">'+ic('dn',17,2.4)+'</button><button class="mini" style="background:var(--fill2)" onclick="pvShift(1)" aria-label="Subir medio tono">'+ic('up',17,2.4)+'</button></div></div>';
 }
 function pvToggle(dir){
-  if(PAT.on){patStop();drawPlayerState();return}
+  if(PAT.on||PV.wait){PV.wait=false;patStop();vozCancel();drawPlayerState();return}
   if(SS.on&&!SS.min&&SS.ph==='step'&&!SS.run)togglePause();
   const e=Object.assign({id:PV.id},exBase(PV.id));
-  patStart(e,PV.tonic,t=>{PV.tonic=t;const el=$vis('pvT');if(el)el.textContent=noteName(t)},dir);drawPlayerState();
+  vozThen(()=>{patStart(e,PV.tonic,t=>{PV.tonic=t;const el=$vis('pvT');if(el)el.textContent=noteName(t)},dir);drawPlayerState()});
+  drawPlayerState();
+}
+/* «Tu voz»: antes de la primera vuelta (y si han cambiado los auriculares) se comprueba si el micro oye el piano */
+let PVW=0;
+function vozThen(fn){
+  if(!vozWanted()||VOZ.ear||TUN.on){fn();return}
+  const q=PAT.req,w=++PVW;PV.wait=w;
+  vozCheck().then(()=>{if(PV.wait!==w)return;PV.wait=false;if(PAT.req!==q){drawPlayerState();return}fn()});
+}
+function vozToggle(){
+  const on=!pianoCfg().voz;DB.cfg.pno=Object.assign({},pianoCfg(),{voz:on});save();
+  if(!on){vozCancel();vozClose();PV.wait=false}
+  else if(PAT.on){if(VOZ.ear)vozStart();else vozRetry()}
+  else if(!VOZ.ear)vozCheck();
+  vozUI();
+}
+/* vuelve a comprobar si el micro oye el piano; si estaba sonando, para, comprueba y sigue en la misma vuelta */
+function vozRetry(){
+  VOZ.ear=null;
+  if(PAT.on){const e=PAT.e,t=PAT.tonic,cb=PAT.cb,d=PAT.dir;patStop();vozThen(()=>{patStart(e,t,cb,d);vozUI()})}
+  else vozCheck();
+  vozUI();
+}
+/* lo que depende de «Tu voz» fuera de la guía (la guía se pone al día sola) */
+function vozUI(){
+  drawPlayerState();
+  document.querySelectorAll('[id="pvVoz"]').forEach(b=>{const on=pianoCfg().voz;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
+  document.querySelectorAll('[data-vozh]').forEach(x=>x.innerHTML=vozHelp());
+  document.querySelectorAll('[data-vozsw]').forEach(x=>{const on=pianoCfg().voz;x.classList.toggle('on',on);x.setAttribute('aria-checked',on)});
+}
+function vozHelp(){
+  if(VOZ.st==='check')return 'Comprobando si el micro oye el piano: no cantes un momento…';
+  if(VOZ.st==='nomic')return 'No se pudo abrir el micrófono. Revisa el permiso del micro para Neiro.';
+  if(!pianoCfg().voz)return 'Mientras suena el piano, una línea naranja encima de la guía sigue lo que cantas, con la altura exacta.';
+  if(VOZ.ear==='ok')return 'Comprobado: el micro no oye el piano. La línea se dibuja todo el rato.';
+  if(VOZ.ear==='bleed')return 'El micro oye el piano por el altavoz, así que la línea solo sale en los huecos. Con auriculares se ve mientras suena. <button class="link" onclick="vozRetry()">Comprobar otra vez</button>';
+  return 'Mejor con auriculares: con el altavoz, el micro oye también el piano. Al tocar el piano se comprueba con una nota corta.';
 }
 function pvShift(d){PV.tonic=Math.max(36,Math.min(84,PV.tonic+d));if(PAT.on)PAT.tonic=PV.tonic;else tone(PV.tonic,.9);const el=$vis('pvT');if(el)el.textContent=noteName(PV.tonic)}
-function drawPlayerState(){const b=$vis('pvBtn');if(!b)return;b.classList.toggle('on',PAT.on);b.innerHTML=ic(PAT.on?'pause':'play',20);b.setAttribute('aria-label',PAT.on?'Parar el piano':'Tocar el patrón');const s=b.parentNode.querySelector('.c1');if(s)s.textContent=pvSub(PAT.on)}
+function drawPlayerState(){const b=$vis('pvBtn');if(!b)return;const on=PAT.on||PV.wait;b.classList.toggle('on',on);b.innerHTML=ic(on?'pause':'play',20);b.setAttribute('aria-label',on?'Parar el piano':'Tocar el patrón');const s=b.parentNode.querySelector('.c1');if(s)s.textContent=pvSub(PAT.on)}
 function openEx(id){
   const e=exBase(id);if(!e)return;patStop();PV={id,tonic:startTonic(e)};
   openSheet(()=>{const inP=planEx().includes(id),custom=!EXC[id];
@@ -755,7 +793,7 @@ function meSheet(){
       '<p class="fn l2">En este móvil · sin cuenta</p><span class="pill" style="margin-top:8px;background:var(--amber-soft);color:var(--amber)">Cinturón '+C.belt[1].toLowerCase()+'</span></div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Práctica</p><div class="group">'+
       row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row(goalsOf(p).length>1?'Objetivos':'Objetivo',goalsOf(p).length?(goalsOf(p).length>1?goalsOf(p).length+' elegidos':GOALS[goalsOf(p)[0]].n):'—','openGoals()')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
-    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+row('Vista',PNO_VIEW[pianoCfg().view].n,'openPiano()')+'</div></div>'+
+    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+row('Vista',PNO_VIEW[pianoCfg().view].n,'openPiano()')+row('Tu voz encima',pianoCfg().voz?'Sí':'No','openPiano()')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Afinador</p><div class="group">'+row('Margen de «Afinado»',TUN_TOL[tunTolKey()].n+' · ±'+tunTol(),'openTunTol(true)')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Clases</p><div class="group">'+
       '<button class="cell" onclick="setTeacher(!DB.profile.teacher,true);openSheet(meSheet,true,true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Voy a clase</span><span class="sw'+(p.teacher?' on':'')+'" role="switch" aria-checked="'+!!p.teacher+'"></span></div></button>'+
@@ -782,12 +820,14 @@ const finTonic=()=>PAT.round?PAT.round.tonic:(PV&&PV.tonic)||60;
 const pnoTxt=()=>{const c=pianoCfg();return PNO_SND[c.snd].n+' · '+PNO_VEL[c.vel].n.toLowerCase()};
 function openPiano(push){
   const prev=onSheetClose;
-  openSheet(()=>{const c=pianoCfg(),demo=PAT.on&&PAT.e&&PAT.e.demo;
+  openSheet(()=>{const c=pianoCfg(),demo=(PAT.on&&PAT.e&&PAT.e.demo)||PV.wait;
     return{title:'Piano de referencia',body:'<div class="pad stack">'+
       '<p class="sb l2 center" style="padding:0 10px">Si te cuesta oír las notas, empieza con el sonido suave y la velocidad tranquila. Cuando las sigas sin esfuerzo, pasa al piano.</p>'+
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Sonido</p>'+Object.keys(PNO_SND).map(k=>optBtn(PNO_SND[k],c.snd===k,"setPno('snd','"+k+"')")).join('')+
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Velocidad</p>'+Object.keys(PNO_VEL).map(k=>optBtn(PNO_VEL[k],c.vel===k,"setPno('vel','"+k+"')")).join('')+
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Vista</p>'+Object.keys(PNO_VIEW).map(k=>optBtn(PNO_VIEW[k],c.view===k,"setPno('view','"+k+"')")).join('')+
+      '<p class="ghead" style="padding-left:16px;margin-top:6px">Tu voz</p><div class="group"><button class="cell" onclick="vozToggle()"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Dibujar tu voz encima</p><p class="fn l2">Con el micro, mientras suena el piano</p></div>'+
+        '<span class="sw'+(c.voz?' on':'')+'" data-vozsw role="switch" aria-checked="'+c.voz+'"></span></div></button></div><p class="fn l2" style="padding:0 16px" data-vozh>'+vozHelp()+'</p>'+
       '<div class="pcard" style="background:var(--sheet2);margin-top:6px">'+guideHTML('escala5')+'</div>'+
       '<button class="btn '+(demo?'sec':'pri')+'" onclick="pnoDemo()">'+ic(demo?'pause':'play',18)+(demo?'Parar':'Probar con la escala de 5 notas')+'</button>'+
       '<p class="fn l2 center">Si el piano ya está sonando, el cambio se oye desde la vuelta siguiente.</p>'+'<p class="ghead" style="padding-left:16px;margin-top:18px">Aviso al acabar el paso</p>'+Object.keys(PNO_FIN).map(k=>optBtn(PNO_FIN[k],c.fin===k,"setFin('"+k+"')")).join('')+'<p class="fn l2" style="padding:0 16px">Toca uno para oírlo. Además, el móvil vibra una vez, corto.</p>'+'</div>'}},push);
@@ -796,8 +836,8 @@ function openPiano(push){
 function setFin(k){setPno('fin',k);ding(k==='cadencia'?finTonic():0,k)}
 function setPno(k,v){DB.cfg.pno=Object.assign({},pianoCfg(),{[k]:v});save();drawSheet()}
 function pnoDemo(){
-  if(PAT.on&&PAT.e&&PAT.e.demo){patStop();drawSheet();return}
-  const e=Object.assign({id:'escala5',demo:1},exBase('escala5'));patStart(e,startTonic(e),null);drawSheet();
+  if((PAT.on&&PAT.e&&PAT.e.demo)||PV.wait){PV.wait=false;patStop();vozCancel();drawSheet();return}
+  const e=Object.assign({id:'escala5',demo:1},exBase('escala5'));vozThen(()=>{patStart(e,startTonic(e),null);drawSheet()});if(PV.wait)drawSheet();
 }
 function setProfile(k,v){DB.profile=Object.assign({},DB.profile,{[k]:v});save();render()}
 function openDays(){
@@ -1091,7 +1131,7 @@ function jumpStep(i){SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();SS.i=i;close
 function togglePause(btn){
   if(SS.run){
     SS.left=(SS.endAt-Date.now())/1000;SS.run=false;SS.pauseAt=Date.now();endPrev=null;
-    SS.patWas=PAT.on;SS.patDir=PAT.dir;SS.tunWas=TUN.on;patStop();tunerStop();sessPersist();
+    SS.patWas=PAT.on;SS.patDir=PAT.dir;SS.tunWas=TUN.on;PV.wait=false;patStop();tunerStop();sessPersist();
     renderSession();renderAcc();return;
   }
   if(SS.left<=0)return; // paso hecho: el piano o el afinador se pueden usar, pero ya no suman tiempo
