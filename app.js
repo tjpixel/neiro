@@ -972,9 +972,9 @@ function startSession(short){
   closeSheet();
   const sv=savedSess();if(sv&&!short){restoreSess(sv,true);toast('Sigues donde lo dejaste');return}
   Object.assign(SS,{on:true,min:false,steps:buildSteps(short),i:0,t0:Date.now(),used:[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:short||null});
-  enterStep(true);$('session').classList.add('on');keepAwake(true);renderSession();renderAcc();
+  enterStep(false);$('session').classList.add('on');keepAwake(true);renderSession();renderAcc();
 }
-function sessPersist(out){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,left:stepLeft(),sec:(SS.steps[SS.i]||{}).sec,t0:SS.t0,mins:SS.mins,out:!!out}:null)}
+function sessPersist(out){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,left:stepLeft(),sec:(SS.steps[SS.i]||{}).sec,t0:SS.t0,mins:SS.mins,wait:!!SS.wait,out:!!out}:null)}
 /* práctica que dejaste con «Salir» hoy: se puede seguir desde el mismo tiempo, sin sumar el rato fuera */
 function savedSess(){const st=PREF.get('sess',null);return st&&st.out&&st.d===T()?st:null}
 const savedSec=st=>(st.used||[]).reduce((a,b)=>a+(b||0),0)+Math.max(0,(st.sec||0)-(st.left||0));
@@ -983,29 +983,30 @@ function restoreSess(st,run){
   if(SS.i>=SS.steps.length)SS.i=SS.steps.length-1;
   const s=SS.steps[SS.i];if(st.sec)s.sec=st.sec;
   enterStep(false);if(st.left!=null){SS.left=st.left;SS.beeped=st.left<=0}
-  if(run){SS.run=true;SS.endAt=Date.now()+SS.left*1000}
+  SS.wait=!!st.wait;
+  if(run&&!SS.wait){SS.run=true;SS.endAt=Date.now()+SS.left*1000}
   sessPersist();
   if(run){$('session').classList.add('on');keepAwake(true);renderSession()}
   renderAcc();
 }
 function enterStep(autostart){
   patStop();tunerStop();SS.holdOn=false;SS.pauseAt=0;SS.patWas=SS.tunWas=false;
-  const s=SS.steps[SS.i];SS.left=s.sec;SS.beeped=false;SS.run=!!autostart;SS.endAt=Date.now()+SS.left*1000;
+  const s=SS.steps[SS.i];SS.left=s.sec;SS.beeped=false;SS.run=!!autostart;SS.wait=!autostart;SS.endAt=Date.now()+SS.left*1000;
   startTick();sessPersist();
 }
 /* una sola fuente de verdad para el tiempo: lo que queda del paso, cómo se escribe y el tiempo de práctica (sin pausas) */
 const stepLeft=()=>SS.run?(SS.endAt-Date.now())/1000:SS.left;
 const fmtL=L=>L>0?mmss(Math.ceil(L)):'+'+mmss(-L);
-const ringLbl=(L,s)=>L<=0?'Tiempo · pasa cuando quieras':(SS.run?'de '+mmss(s.sec):'En pausa');
+const ringLbl=(L,s)=>L<=0?'Tiempo · pasa cuando quieras':(SS.run?'de '+mmss(s.sec):(SS.wait?'Cuando quieras':'En pausa'));
 function practiceSec(){return SS.used.reduce((a,b)=>a+(b||0),0)+(SS.ph==='step'?stepElapsed():0)}
 const holdSec=()=>Math.max(0,Math.floor(((SS.run||!SS.pauseAt?Date.now():SS.pauseAt)-SS.holdT0)/1000));
 function stepElapsed(){const s=SS.steps[SS.i];if(!s)return 0;const left=SS.run?(SS.endAt-Date.now())/1000:SS.left;return Math.max(0,s.sec-left)}
 function nextStep(){
   SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();
   if(SS.i>=SS.steps.length-1){finishSession();return}
-  SS.i++;enterStep(true);renderSession();renderAcc();
+  SS.i++;enterStep(false);renderSession();renderAcc();
 }
-function jumpStep(i){SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();SS.i=i;closeSheet();enterStep(true);renderSession();renderAcc()}
+function jumpStep(i){SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();SS.i=i;closeSheet();enterStep(false);renderSession();renderAcc()}
 /* la pausa lo congela todo: temporizador, reloj de práctica, piano, afinador, siseo y respiración; al seguir, vuelve lo que sonaba */
 function togglePause(){
   if(SS.run){
@@ -1013,7 +1014,7 @@ function togglePause(){
     SS.patWas=PAT.on;SS.patDir=PAT.dir;SS.tunWas=TUN.on;patStop();tunerStop();sessPersist();
     renderSession();renderAcc();return;
   }
-  SS.endAt=Date.now()+SS.left*1000;SS.run=true;
+  SS.endAt=Date.now()+SS.left*1000;SS.run=true;SS.wait=false;
   if(SS.holdOn&&SS.pauseAt)SS.holdT0+=Date.now()-SS.pauseAt;
   SS.pauseAt=0;const pw=SS.patWas,tw=SS.tunWas;SS.patWas=SS.tunWas=false;
   renderSession();renderAcc();
@@ -1042,7 +1043,7 @@ function tick(){
   const br=$('ssBreath');
   if(br){const el=stepElapsed()%16,ph=el<4?['Inhala',1,4-el]:(el<8?['Sostén',1,8-el]:['Suelta',.55,16-el]);
     br.style.setProperty('--b',SS.run?(el<4?.55+.45*(el/4):(el<8?1:1-.45*((el-8)/8))):.55);
-    const tx=$('ssBrT'),n=$('ssBrN');if(tx)tx.textContent=SS.run?ph[0]:'En pausa';if(n)n.textContent=SS.run?Math.ceil(ph[2]):''}
+    const tx=$('ssBrT'),n=$('ssBrN');if(tx)tx.textContent=SS.run?ph[0]:(SS.wait?'Preparado':'En pausa');if(n)n.textContent=SS.run?Math.ceil(ph[2]):''}
   if(SS.holdOn){const h=$('ssHold');if(h)h.textContent=holdSec()+' s'}
   renderAcc();
 }
@@ -1093,7 +1094,7 @@ function renderSession(){
   }else if(s.b==='gus'){
     body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.5)+ring(RING)+'</div>';
   }
-  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center"><button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause()" aria-label="'+(SS.run?'Pausar la práctica':'Seguir con la práctica')+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+'Seguir')+'</button><button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
+  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center"><button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause()" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button><button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
     '<button class="btn pri lg" style="margin-top:6px" onclick="nextStep()">'+(last?ic('check',22,2.6)+'Terminar':'Siguiente: '+esc(nx.ex?exName(nx.ex):nx.bn))+'</button></div>';
   $('session').innerHTML='<div class="fullin">'+sessHead()+'<p class="fn l2" style="margin-top:20px">'+sub+'</p><h1 class="lt balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
   if(e&&e.mode==='tuner'&&TUN.on){TUN.cb=(r)=>tunerUpdate(r)}
@@ -1160,7 +1161,7 @@ function renderAcc(){
   const s=SS.steps[SS.i],L=SS.ph==='step'?(SS.run?(SS.endAt-Date.now())/1000:SS.left):0,C=2*Math.PI*16.5,pct=SS.ph==='step'?Math.max(0,L)/s.sec:1;
   a.innerHTML='<div class="ring" style="width:40px;height:40px"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16.5" fill="none" stroke="var(--fill)" stroke-width="4"/>'+
     '<circle cx="20" cy="20" r="16.5" fill="none" stroke="'+(SS.ph==='step'?endCol(L):'var(--tint)')+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(-C*(1-pct))+'"/></svg><div class="in">'+(SS.ph==='step'?'':ic('check',15))+'</div></div>'+
-    '<div class="grow"><p class="fn semi num">'+(SS.ph==='step'?(SS.run?(L>0?mmss(Math.ceil(L)):'Tiempo · '+fmtL(L)):'En pausa'):'Falta valorar')+'</p><p class="c1 l2 ell">'+esc(s?(s.ex?exName(s.ex):s.bn):'Práctica')+'</p></div>'+
+    '<div class="grow"><p class="fn semi num">'+(SS.ph==='step'?(SS.run?(L>0?mmss(Math.ceil(L)):'Tiempo · '+fmtL(L)):(SS.wait?'Sin empezar':'En pausa')):'Falta valorar')+'</p><p class="c1 l2 ell">'+esc(s?(s.ex?exName(s.ex):s.bn):'Práctica')+'</p></div>'+
     '<span class="btn sec sm" style="height:38px">Abrir</span>';
 }
 
