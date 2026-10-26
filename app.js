@@ -430,19 +430,24 @@ function confirmSheet(title,text,btn,fn,danger){
 
 /* ═════ EJERCICIO ═════ */
 let PV={id:null,tonic:48};
+/* con la práctica minimizada, su reproductor sigue en la página: los controles se buscan en el que se ve */
+const $vis=id=>{for(const x of document.querySelectorAll('[id="'+id+'"]'))if(x.getClientRects().length)return x;return $(id)};
+/* reproductor del patrón: arriba la guía (escalera o teclado, según Tú → Piano de referencia), abajo los controles */
+const pvSub=on=>on?'Tónica de esta vuelta':'Piano de referencia';
 function playerHTML(id,tonic,on,small){
-  return '<div class="player"'+(small?' style="background:var(--sheet2)"':'')+'><button class="playbtn'+(on?' on':'')+'" id="pvBtn" onclick="pvToggle()" aria-label="'+(on?'Parar el piano':'Tocar el patrón')+'">'+ic(on?'pause':'play',20)+'</button>'+
-    '<div class="grow"><p class="hl num" id="pvT">'+noteName(tonic)+'</p><p class="c1 l2">'+(on?'Sube medio tono en cada vuelta':'Piano de referencia')+'</p></div>'+
-    '<button class="mini" style="background:var(--fill2)" onclick="pvShift(-1)" aria-label="Bajar medio tono">'+ic('dn',17,2.4)+'</button><button class="mini" style="background:var(--fill2)" onclick="pvShift(1)" aria-label="Subir medio tono">'+ic('up',17,2.4)+'</button></div>';
+  return '<div class="pcard"'+(small?' style="background:var(--sheet2)"':'')+'>'+guideHTML(id)+
+    '<div class="player"><button class="playbtn'+(on?' on':'')+'" id="pvBtn" onclick="pvToggle()" aria-label="'+(on?'Parar el piano':'Tocar el patrón')+'">'+ic(on?'pause':'play',20)+'</button>'+
+    '<div class="grow"><p class="hl num" id="pvT">'+noteName(tonic)+'</p><p class="c1 l2">'+pvSub(on)+'</p></div>'+
+    '<button class="mini" style="background:var(--fill2)" onclick="pvShift(-1)" aria-label="Bajar medio tono">'+ic('dn',17,2.4)+'</button><button class="mini" style="background:var(--fill2)" onclick="pvShift(1)" aria-label="Subir medio tono">'+ic('up',17,2.4)+'</button></div></div>';
 }
 function pvToggle(dir){
   if(PAT.on){patStop();drawPlayerState();return}
   if(SS.on&&!SS.min&&SS.ph==='step'&&!SS.run)togglePause();
   const e=Object.assign({id:PV.id},exBase(PV.id));
-  patStart(e,PV.tonic,t=>{PV.tonic=t;const el=$('pvT');if(el)el.textContent=noteName(t)},dir);drawPlayerState();
+  patStart(e,PV.tonic,t=>{PV.tonic=t;const el=$vis('pvT');if(el)el.textContent=noteName(t)},dir);drawPlayerState();
 }
-function pvShift(d){PV.tonic=Math.max(36,Math.min(84,PV.tonic+d));if(PAT.on)PAT.tonic=PV.tonic;else tone(PV.tonic,.9);const el=$('pvT');if(el)el.textContent=noteName(PV.tonic)}
-function drawPlayerState(){const b=$('pvBtn');if(!b)return;b.classList.toggle('on',PAT.on);b.innerHTML=ic(PAT.on?'pause':'play',20);const s=b.parentNode.querySelector('.c1');if(s)s.textContent=PAT.on?'Sube medio tono en cada vuelta':'Piano de referencia'}
+function pvShift(d){PV.tonic=Math.max(36,Math.min(84,PV.tonic+d));if(PAT.on)PAT.tonic=PV.tonic;else tone(PV.tonic,.9);const el=$vis('pvT');if(el)el.textContent=noteName(PV.tonic)}
+function drawPlayerState(){const b=$vis('pvBtn');if(!b)return;b.classList.toggle('on',PAT.on);b.innerHTML=ic(PAT.on?'pause':'play',20);b.setAttribute('aria-label',PAT.on?'Parar el piano':'Tocar el patrón');const s=b.parentNode.querySelector('.c1');if(s)s.textContent=pvSub(PAT.on)}
 function openEx(id){
   const e=exBase(id);if(!e)return;patStop();PV={id,tonic:startTonic(e)};
   openSheet(()=>{const inP=planEx().includes(id),custom=!EXC[id];
@@ -450,7 +455,8 @@ function openEx(id){
       '<div class="row" style="gap:8px;padding:0 4px"><span class="pill gray">'+CATN[e.c]+'</span>'+(e.lv?'<span class="pill gray">'+(e.lv===2?'Avanzado':'Intermedio')+'</span>':'')+(inP?'<span class="pill tint">En tu práctica</span>':'')+'</div>'+
       '<p class="bd" style="padding:0 4px;white-space:pre-wrap">'+esc(e.how||'')+'</p>'+
       (e.pat?playerHTML(id,PV.tonic,PAT.on,true)+'<p class="fn l2" style="padding:0 6px;margin-top:-4px">Suena el acorde de la tónica y después el patrón. Canta encima; al llegar arriba de tu rango, baja solo.</p>':'')+
-      (e.pat?'<div class="group"><button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Sonido y velocidad</span><span class="val">'+pnoTxt()+'</span>'+chev()+'</div></button></div>':'')+
+      (e.pat?'<div class="group"><button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Sonido y velocidad</span><span class="val">'+pnoTxt()+'</span>'+chev()+'</div></button>'+
+        '<button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Vista</span><span class="val">'+PNO_VIEW[pianoCfg().view].n+'</span>'+chev()+'</div></button></div>':'')+
       (e.mode==='tuner'?'<button class="btn sec" onclick="openTuner(true)">'+ic('gauge',18)+'Abrir el afinador</button>':'')+
       (e.mode==='hold'&&DB.best[id]?'<div class="card row" style="padding:12px 16px;gap:12px;background:var(--sheet2)"><span class="ic soft" style="width:34px;height:34px;border-radius:10px;display:grid;place-items:center">'+ic('trophy',18)+'</span><div class="grow"><p class="fn l2">Tu marca</p><p class="hl num">'+DB.best[id]+' s</p></div></div>':'')+
       (e.pat?'<div class="group"><div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Hasta dónde llegas cómodo</p><p class="fn l2">Nota más aguda del patrón sin apretar</p></div>'+
@@ -706,7 +712,7 @@ function meSheet(){
       '<p class="fn l2">En este móvil · sin cuenta</p><span class="pill" style="margin-top:8px;background:var(--amber-soft);color:var(--amber)">Cinturón '+C.belt[1].toLowerCase()+'</span></div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Práctica</p><div class="group">'+
       row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row(goalsOf(p).length>1?'Objetivos':'Objetivo',goalsOf(p).length?(goalsOf(p).length>1?goalsOf(p).length+' elegidos':GOALS[goalsOf(p)[0]].n):'—','openGoals()')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
-    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+'</div></div>'+
+    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+row('Vista',PNO_VIEW[pianoCfg().view].n,'openPiano()')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Clases</p><div class="group">'+
       '<button class="cell" onclick="setTeacher(!DB.profile.teacher,true);openSheet(meSheet,true,true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Voy a clase</span><span class="sw'+(p.teacher?' on':'')+'" role="switch" aria-checked="'+!!p.teacher+'"></span></div></button>'+
       (p.teacher?row('Día de clase',p.classDay!=null?DIAS[p.classDay]:'—','openClassDay(true)'):'')+'</div></div>'+
@@ -735,7 +741,9 @@ function openPiano(push){
       '<p class="sb l2 center" style="padding:0 10px">Si te cuesta oír las notas, empieza con el sonido suave y la velocidad tranquila. Cuando las sigas sin esfuerzo, pasa al piano.</p>'+
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Sonido</p>'+Object.keys(PNO_SND).map(k=>optBtn(PNO_SND[k],c.snd===k,"setPno('snd','"+k+"')")).join('')+
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Velocidad</p>'+Object.keys(PNO_VEL).map(k=>optBtn(PNO_VEL[k],c.vel===k,"setPno('vel','"+k+"')")).join('')+
-      '<button class="btn '+(demo?'sec':'pri')+'" style="margin-top:6px" onclick="pnoDemo()">'+ic(demo?'pause':'play',18)+(demo?'Parar':'Probar con la escala de 5 notas')+'</button>'+
+      '<p class="ghead" style="padding-left:16px;margin-top:6px">Vista</p>'+Object.keys(PNO_VIEW).map(k=>optBtn(PNO_VIEW[k],c.view===k,"setPno('view','"+k+"')")).join('')+
+      '<div class="pcard" style="background:var(--sheet2);margin-top:6px">'+guideHTML('escala5')+'</div>'+
+      '<button class="btn '+(demo?'sec':'pri')+'" onclick="pnoDemo()">'+ic(demo?'pause':'play',18)+(demo?'Parar':'Probar con la escala de 5 notas')+'</button>'+
       '<p class="fn l2 center">Si el piano ya está sonando, el cambio se oye desde la vuelta siguiente.</p></div>'}},push);
   onSheetClose=()=>{if(PAT.on&&PAT.e&&PAT.e.demo)patStop();onSheetClose=prev};
 }
@@ -1115,8 +1123,8 @@ function renderSession(){
     if(PV.id!==s.ex){PV={id:s.ex,tonic:startTonic(e)}}
     body='<div class="card" style="margin-top:14px;padding:13px 16px"><p class="sb">'+esc(e.how)+'</p></div>'+
       (s.b==='tec'&&lc&&lc.f?'<div class="note" style="margin-top:10px"><span>En qué fijarte: <b>'+esc(lc.f)+'</b></span></div>':'')+
-      '<div style="display:flex;justify-content:center;margin-top:18px">'+ring(RING)+'</div>'+
-      (e.pat?'<div style="margin-top:16px">'+playerHTML(s.ex,PV.tonic,PAT.on)+'</div>':'');
+      (e.pat?'<div style="margin-top:14px">'+playerHTML(s.ex,PV.tonic,PAT.on)+'</div><div style="display:flex;justify-content:center;margin-top:12px">'+miniTimer()+'</div>'
+        :'<div style="display:flex;justify-content:center;margin-top:18px">'+ring(RING)+'</div>');
   }else if(s.b==='rep'){
     const L2=songsActive(),sg=L2.find(x=>x.id===SS.song)||L2[0];
     body=(L2.length>1?'<div class="segc" style="margin-top:12px;overflow-x:auto">'+L2.slice(0,3).map(x=>'<button class="'+(sg&&x.id===sg.id?'on':'')+'" style="white-space:nowrap;padding:0 8px" onclick="SS.song=\''+x.id+'\';renderSession()">'+esc(x.t)+'</button>').join('')+'</div>':'')+
@@ -1133,7 +1141,7 @@ function renderSession(){
   $('session').innerHTML='<div class="fullin">'+sessHead()+'<p class="fn l2" style="margin-top:20px">'+sub+'</p><h1 class="lt balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
   if(e&&e.mode==='tuner'&&TUN.on){TUN.cb=(r)=>tunerUpdate(r)}
 }
-const miniTimer=()=>{const L=stepLeft(),s=SS.steps[SS.i];return '<div class="row" style="gap:8px;padding:8px 16px;border-radius:20px;background:var(--fill2)">'+ic('clock',16)+'<span class="fn num semi" id="ssT" style="color:'+endTxt(L)+'">'+fmtL(L)+'</span><span class="c1 l2" id="ssL">'+ringLbl(L,s)+'</span></div>'};
+const miniTimer=()=>{const L=stepLeft(),s=SS.steps[SS.i];return '<div class="mtimer'+(L<=0?' done':'')+'">'+ic(L<=0?'check':'clock',16,L<=0?2.6:2)+'<span class="fn num semi" id="ssT" style="color:'+endTxt(L)+'">'+fmtL(L)+'</span><span class="c1 l2" id="ssL">'+ringLbl(L,s)+'</span></div>'};
 function holdToggle(){
   const s=SS.steps[SS.i];
   if(!SS.holdOn){if(!SS.run)togglePause();SS.holdOn=true;SS.holdT0=Date.now();renderSession();return}

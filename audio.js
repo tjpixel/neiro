@@ -23,7 +23,7 @@ const out_=()=>ROUTE||master();
 /* ajustes del piano; si no hay nada elegido: suave y tranquila para quien está empezando, piano y normal para el resto */
 function pianoCfg(){
   const c=(typeof DB!=='undefined'&&DB.cfg&&DB.cfg.pno)||{},ini=typeof DB==='undefined'||!DB.profile||!DB.profile.lvl||DB.profile.lvl==='ini';
-  return{snd:c.snd||(ini?'suave':'piano'),vel:c.vel||(ini?'tranq':'normal')};
+  return{snd:c.snd||(ini?'suave':'piano'),vel:c.vel||(ini?'tranq':'normal'),view:c.view==='tec'?'tec':'esc'};
 }
 const VEL={tranq:.7,normal:1};
 /* armónicos del piano: más presencia en graves (el altavoz del móvil casi no da la fundamental por debajo de 200 Hz) */
@@ -79,20 +79,33 @@ function ding(){
 /* ═════ PATRÓN ═════
    Toca el acorde de la tónica, después el patrón, y vuelve a empezar medio tono más arriba.
    En velocidad tranquila, entre el acorde y el patrón suena sola la nota de inicio.
-   Al llegar al límite de tu rango, baja. Devuelve la duración de una pasada en segundos. */
-function playPattern(e,tonic,t0){
-  const c=ac();if(!c||!e.pat)return 0;
+   Al llegar al límite de tu rango, baja.
+   Una vuelta es un plan con sus tiempos: el piano lo toca y la escalera lo dibuja con los mismos tiempos. */
+function patPlan(e){
   const pc=pianoCfg(),k=VEL[pc.vel]||1,calm=pc.vel==='tranq';
   /* las sirenas ya son lentas: en tranquila solo se frenan un poco */
   const b=60/((e.bpm||100)*(e.glide?Math.max(k,.85):k));
-  let t=(t0||c.currentTime)+.05;
-  chord(tonic,t,calm?1.1:.8);t+=calm?1.5:1.1;
-  if(calm&&!e.glide&&!e.hold){pianoNote(tonic+e.pat[0],t,.9);t+=1.3}
-  if(e.glide){for(let i=1;i<e.pat.length;i++){glideNote(tonic+e.pat[i-1],tonic+e.pat[i],t,b*2);t+=b*2}}
-  else e.pat.forEach((s,i)=>{const len=e.hold&&i===0?e.hold:(e.stac?b*.35:b*.95);pianoNote(tonic+s,t,len);t+=e.hold&&i===0?e.hold:b});
-  return t-(t0||c.currentTime)+(calm?.5:0);
+  const pl={glide:!!e.glide,chord:calm?1.1:.8,cd:calm?1.5:1.1,pre:null,it:[],tail:calm?.5:0};
+  let t=pl.cd;
+  if(calm&&!e.glide&&!e.hold){pl.pre={k:e.pat[0],t,len:.9,d:1.3};t+=1.3}
+  pl.tp=t;let u=0;
+  if(e.glide){for(let i=1;i<e.pat.length;i++){pl.it.push({k0:e.pat[i-1],k1:e.pat[i],t:u,d:b*2,len:b*2});u+=b*2}}
+  else e.pat.forEach((s,i)=>{const h=e.hold&&i===0,d=h?e.hold:b,len=h?e.hold:(e.stac?b*.35:b*.95);pl.it.push({k:s,t:u,d,len});u+=d});
+  pl.D=u;return pl;
 }
-const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null};
+/* toca una vuelta y devuelve cuánto dura en segundos; la deja en PAT.round para la escalera */
+function playPattern(e,tonic,t0){
+  const c=ac();if(!c||!e.pat)return 0;
+  const pl=patPlan(e),base=t0||c.currentTime,s=base+.05;
+  chord(tonic,s,pl.chord);
+  if(pl.pre)pianoNote(tonic+pl.pre.k,s+pl.pre.t,pl.pre.len);
+  pl.it.forEach(n=>{if(pl.glide)glideNote(tonic+n.k0,tonic+n.k1,s+pl.tp+n.t,n.d);else pianoNote(tonic+n.k,s+pl.tp+n.t,n.len)});
+  PAT.round={tonic,s,pl};
+  return s+pl.tp+pl.D-base+pl.tail;
+}
+/* techo del patrón: lo más agudo de tu rango menos un semitono, o tu «nota más aguda cómoda» del ejercicio */
+function patTop(e){const r=myRange();return Math.min(r.hi-1,midiOf(DB.extop[(e&&e.id)||'']||'')||99)}
+const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null,round:null};
 /* dir: 1 sube, -1 baja (al seguir tras una pausa, continúa en el sentido en que iba) */
 function patStart(e,tonic,cb,dir){
   patStop();if(!e||!e.pat)return;
@@ -106,15 +119,14 @@ function patLoop(){
   if(PAT.cb)PAT.cb(PAT.tonic);
   PAT.timer=setTimeout(()=>{
     if(!PAT.on)return;
-    const r=myRange(),hiK=Math.max(...PAT.e.pat),loK=Math.min(...PAT.e.pat);
-    const top=Math.min(r.hi-1,midiOf(DB.extop[PAT.e.id||'']||'')||99);
+    const r=myRange(),hiK=Math.max(...PAT.e.pat),loK=Math.min(...PAT.e.pat),top=patTop(PAT.e);
     if(PAT.dir>0&&PAT.tonic+1+hiK>top)PAT.dir=-1;
     if(PAT.dir<0&&PAT.tonic-1+loK<r.lo)PAT.dir=1;
     PAT.tonic+=PAT.dir;patLoop();
   },(len+.5)*1000);
 }
 function patStop(){
-  PAT.on=false;clearTimeout(PAT.timer);PAT.timer=null;
+  PAT.on=false;PAT.round=null;clearTimeout(PAT.timer);PAT.timer=null;
   const b=PAT.bus,c=AC;PAT.bus=null;
   if(b&&c){try{const t=c.currentTime;b.gain.cancelScheduledValues(t);b.gain.setValueAtTime(b.gain.value,t);b.gain.linearRampToValueAtTime(0,t+.04);setTimeout(()=>{try{b.disconnect()}catch(e){}},120)}catch(e){}}
   if(PAT.cb)PAT.cb(PAT.tonic);

@@ -31,6 +31,10 @@
   --glass:rgba(255,255,255,.82);--glass-edge:rgba(255,255,255,.95);--glass-hi:rgba(255,255,255,.6);
   --shade:rgba(30,30,60,.14);--floor:rgba(30,30,60,.12);--scrim:rgba(0,0,0,.28);
   --belt:#efe9dc;
+  /* guía del piano (escalera y teclado) */
+  --g-now:#8CC63F;--g-done:rgba(140,198,63,.30);--g-bar:rgba(120,120,128,.24);--g-row:rgba(120,120,128,.07);
+  --g-mark:rgba(140,198,63,.34);--g-markb:#55752C;
+  --kw:#F0F0F4;--kb:#2E2E36;--kedge:rgba(60,60,67,.30);--kname:rgba(60,60,67,.62);--kdeg:#1E3A06;--kbt:#FFFFFF;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
@@ -41,6 +45,9 @@
   --warn:#F5C87A;--amber:#F5C87A;--amber-soft:rgba(245,200,122,.15);--red:#FF6B5E;--red-soft:rgba(255,107,94,.16);
   --glass:rgba(36,36,41,.76);--glass-edge:rgba(255,255,255,.16);--glass-hi:rgba(255,255,255,.08);
   --shade:rgba(0,0,0,.55);--floor:rgba(0,0,0,.55);--scrim:rgba(0,0,0,.55);
+  --g-now:#C8F57A;--g-done:rgba(200,245,122,.30);--g-bar:rgba(120,120,128,.40);--g-row:rgba(120,120,128,.11);
+  --g-mark:rgba(200,245,122,.50);--g-markb:#4F6B2A;
+  --kw:#B4B4BE;--kb:#232329;--kedge:rgba(0,0,0,.45);--kname:rgba(16,16,20,.62);--kdeg:#10160A;--kbt:#F5F5F9;
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0A0A0C;--bg2:#17171B;--bg3:#232328;--sheet:#131316;--sheet2:#1F1F24;
@@ -50,6 +57,9 @@
   --warn:#F5C87A;--amber:#F5C87A;--amber-soft:rgba(245,200,122,.15);--red:#FF6B5E;--red-soft:rgba(255,107,94,.16);
   --glass:rgba(36,36,41,.76);--glass-edge:rgba(255,255,255,.16);--glass-hi:rgba(255,255,255,.08);
   --shade:rgba(0,0,0,.55);--floor:rgba(0,0,0,.55);--scrim:rgba(0,0,0,.55);
+  --g-now:#C8F57A;--g-done:rgba(200,245,122,.30);--g-bar:rgba(120,120,128,.40);--g-row:rgba(120,120,128,.11);
+  --g-mark:rgba(200,245,122,.50);--g-markb:#4F6B2A;
+  --kw:#B4B4BE;--kb:#232329;--kedge:rgba(0,0,0,.45);--kname:rgba(16,16,20,.62);--kdeg:#10160A;--kbt:#F5F5F9;
   color-scheme:dark}
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -311,6 +321,38 @@ body.locked{position:fixed;left:0;right:0;overflow:hidden}
 .playbtn{width:52px;height:52px;border-radius:50%;background:var(--tint);color:var(--on-tint);display:grid;place-items:center;flex-shrink:0}
 .playbtn:active{transform:scale(.94)}
 .playbtn.on{background:var(--label);color:var(--bg)}
+
+/* ── reproductor con guía: escalera (vertical) o teclado (horizontal) ── */
+.pcard{border-radius:24px;background:var(--bg2);padding:12px 10px 10px;display:flex;flex-direction:column;gap:10px}
+.pcard>.player{background:none;border-radius:0;padding:10px 0 0;border-top:.5px solid var(--sep)}
+.guide{display:flex;flex-direction:column;gap:8px}
+.ghd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 4px}
+.ghd .pill{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.gtop{text-align:right;flex-shrink:0}
+.gsvg{width:100%;height:auto}
+.gpat{transition:transform .45s cubic-bezier(.2,.8,.2,1)}
+.gghost{animation:gfade 1.3s ease-out forwards}
+@keyframes gfade{from{opacity:.9}to{opacity:0}}
+.gdeg{font:600 9.5px ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;fill:var(--label2);text-anchor:middle}
+.gdeg.now{fill:var(--ink);font-weight:800}
+.gklab{font:500 8px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;fill:var(--label3);text-anchor:end}
+.gtag{font:500 8px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;fill:var(--label3);text-anchor:middle}
+.gseq{display:flex;flex-wrap:wrap;align-items:center;gap:3px;padding:0 4px}
+.gseq span{min-width:23px;height:24px;padding:0 5px;border-radius:12px;display:inline-grid;place-items:center;background:var(--fill2);color:var(--label2);font:600 13px/1 ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-variant-numeric:tabular-nums;transition:background .12s,color .12s}
+.gseq span.wd{padding:0 9px;font:600 12px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+.gseq span.done{background:var(--g-done);color:var(--label)}
+.gseq span.now{background:var(--g-now);color:var(--on-tint)}
+.gseq i{width:1px;height:16px;background:var(--sep);margin:0 3px}
+.gseq b{font-weight:500;font-size:12px;color:var(--label3)}
+.gkbd{cursor:pointer}
+.gkname{font:500 8.5px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;fill:var(--kname);text-anchor:middle}
+.gkdeg{font:700 12px ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;fill:var(--kdeg);text-anchor:middle}
+.gkdeg.blk{font-size:11px;fill:var(--kbt)}
+.gkdeg.now{fill:var(--on-tint)}
+.mtimer{display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:20px;background:var(--fill2)}
+.mtimer.done{background:var(--tint-soft);color:var(--ink)}
+.mtimer.done .fn,.mtimer.done .c1{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){.gpat{transition:none}.gghost{animation:none;opacity:0}}
 /* respiración */
 .breath{width:200px;height:200px;border-radius:50%;margin:0 auto;display:grid;place-items:center;position:relative}
 .breath::before{content:"";position:absolute;inset:0;border-radius:50%;background:var(--tint-soft);transform:scale(var(--b,.55));transition:transform 1s linear}
@@ -369,6 +411,7 @@ audio{width:100%;height:40px}
 <script src="core.js"></script>
 <script src="data.js"></script>
 <script src="audio.js"></script>
+<script src="escalera.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
