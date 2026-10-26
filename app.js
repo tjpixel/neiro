@@ -1057,11 +1057,12 @@ function togglePause(){
 function addMin(){endPrev=null;const was=SS.left<=0&&!SS.run;if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;
   if(was){SS.run=true;SS.wait=false;SS.pauseAt=0;SS.endAt=Date.now()+SS.left*1000;sessPersist();renderSession();renderAcc();return}
   tick()}
-/* el tiempo del paso se ha cumplido: se para todo (temporizador, reloj, piano, afinador, siseo) y espera a «Siguiente» */
+/* el tiempo del paso se ha cumplido: se para el tiempo (temporizador, reloj, afinador, siseo) y espera a «Siguiente»; el piano acaba su vuelta */
 function completeStep(){
   if(SS.holdOn)holdStop();
   SS.left=0;SS.run=false;SS.pauseAt=0;endPrev=null;SS.patWas=SS.tunWas=false;
-  patStop();tunerStop();if(!SS.beeped){SS.beeped=true;ding()}
+  /* pita al acabarse, pero el piano termina la vuelta entera antes de callarse */
+  patFinish(()=>{drawPlayerState();renderAcc()});tunerStop();if(!SS.beeped){SS.beeped=true;ding()}
   sessPersist();renderSession();renderAcc();
 }
 /* temporizador: se vacía en sentido horario y avisa al acabarse: ámbar en los últimos 10 s, rojo en los 3 últimos, con vibración (como en Tsuyo) */

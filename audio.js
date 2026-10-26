@@ -105,13 +105,13 @@ function playPattern(e,tonic,t0){
 }
 /* techo del patrón: lo más agudo de tu rango menos un semitono, o tu «nota más aguda cómoda» del ejercicio */
 function patTop(e){const r=myRange();return Math.min(r.hi-1,midiOf(DB.extop[(e&&e.id)||'']||'')||99)}
-const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null,round:null};
+const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null,round:null,ending:false,onEnd:null};
 /* dir: 1 sube, -1 baja (al seguir tras una pausa, continúa en el sentido en que iba) */
 function patStart(e,tonic,cb,dir){
   patStop();if(!e||!e.pat)return;
   const c=ac(),m=master();
   if(c&&m){PAT.bus=c.createGain();PAT.bus.gain.value=1;PAT.bus.connect(m)}
-  PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;patLoop();
+  PAT.ending=false;PAT.onEnd=null;PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;patLoop();
 }
 function patLoop(){
   if(!PAT.on)return;
@@ -119,14 +119,17 @@ function patLoop(){
   if(PAT.cb)PAT.cb(PAT.tonic);
   PAT.timer=setTimeout(()=>{
     if(!PAT.on)return;
+    if(PAT.ending){const f=PAT.onEnd;patStop();if(f)f();return}
     const r=myRange(),hiK=Math.max(...PAT.e.pat),loK=Math.min(...PAT.e.pat),top=patTop(PAT.e);
     if(PAT.dir>0&&PAT.tonic+1+hiK>top)PAT.dir=-1;
     if(PAT.dir<0&&PAT.tonic-1+loK<r.lo)PAT.dir=1;
     PAT.tonic+=PAT.dir;patLoop();
   },(len+.5)*1000);
 }
+/* acaba la vuelta que está sonando y se para (al acabarse el tiempo del paso: sin cortar en seco) */
+function patFinish(onEnd){if(!PAT.on){if(onEnd)onEnd();return}PAT.ending=true;PAT.onEnd=onEnd||null}
 function patStop(){
-  PAT.on=false;PAT.round=null;clearTimeout(PAT.timer);PAT.timer=null;
+  PAT.on=false;PAT.ending=false;PAT.onEnd=null;PAT.round=null;clearTimeout(PAT.timer);PAT.timer=null;
   const b=PAT.bus,c=AC;PAT.bus=null;
   if(b&&c){try{const t=c.currentTime;b.gain.cancelScheduledValues(t);b.gain.setValueAtTime(b.gain.value,t);b.gain.linearRampToValueAtTime(0,t+.04);setTimeout(()=>{try{b.disconnect()}catch(e){}},120)}catch(e){}}
   if(PAT.cb)PAT.cb(PAT.tonic);
