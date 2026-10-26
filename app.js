@@ -1040,7 +1040,8 @@ function nextStep(){
 }
 function jumpStep(i){SS.used[SS.i]=(SS.used[SS.i]||0)+stepElapsed();SS.i=i;closeSheet();enterStep(false);renderSession();renderAcc()}
 /* la pausa lo congela todo: temporizador, reloj de práctica, piano, afinador, siseo y respiración; al seguir, vuelve lo que sonaba */
-function togglePause(){
+/* btn: «Empezar»/«Seguir» del pie; además de seguir el tiempo, pone en marcha la referencia del paso (piano o afinador) */
+function togglePause(btn){
   if(SS.run){
     SS.left=(SS.endAt-Date.now())/1000;SS.run=false;SS.pauseAt=Date.now();endPrev=null;
     SS.patWas=PAT.on;SS.patDir=PAT.dir;SS.tunWas=TUN.on;patStop();tunerStop();sessPersist();
@@ -1051,8 +1052,10 @@ function togglePause(){
   if(SS.holdOn&&SS.pauseAt)SS.holdT0+=Date.now()-SS.pauseAt;
   SS.pauseAt=0;const pw=SS.patWas,tw=SS.tunWas;SS.patWas=SS.tunWas=false;
   renderSession();renderAcc();
-  if(pw&&!PAT.on&&!SS.min)pvToggle(SS.patDir);
-  if(tw&&!TUN.on&&!SS.min)tunerGo().then(ok=>{if(ok)renderSession()});
+  const st=SS.steps[SS.i],e=st&&st.ex?exBase(st.ex):null;
+  const pat=pw||(btn&&e&&e.pat&&!e.mode),tun=tw||(btn&&e&&e.mode==='tuner');
+  if(pat&&!PAT.on&&!SS.min)pvToggle(pw?SS.patDir:undefined);
+  if(tun&&!TUN.on&&!SS.min)tunerGo().then(ok=>{if(ok)renderSession()});
 }
 function addMin(){endPrev=null;const was=SS.left<=0&&!SS.run;if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;
   if(was){SS.run=true;SS.wait=false;SS.pauseAt=0;SS.endAt=Date.now()+SS.left*1000;sessPersist();renderSession();renderAcc();return}
@@ -1137,7 +1140,7 @@ function renderSession(){
   }else if(s.b==='gus'){
     body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.5)+ring(RING)+'</div>';
   }
-  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center">'+(L<=0?'':'<button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause()" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button>')+'<button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
+  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center">'+(L<=0?'':'<button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause(1)" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button>')+'<button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
     nextBtn(L,last,nx)+'</div>';
   $('session').innerHTML='<div class="fullin">'+sessHead()+'<p class="fn l2" style="margin-top:20px">'+sub+'</p><h1 class="lt balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
   if(e&&e.mode==='tuner'&&TUN.on){TUN.cb=(r)=>tunerUpdate(r)}
