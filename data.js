@@ -33,7 +33,7 @@ const FREE_SONGS=3;
    Compatible con NEXA Voz: classes, songs, ss, recs, range y goals tienen la misma forma. */
 function freshDB(){return{v:1,_ts:0,
   profile:{},                                  // name, goal, lvl, voice, teacher, classDay, done, deshi
-  cfg:{avail:[1,3,5],mins:20,bl:null,start:null},
+  cfg:{avail:[1,3,5],mins:20,bl:null,start:null,pno:null},
   plan:null,                                   // {ex:[ids], src:'auto'|'edit'|'nexa-voz'}
   cex:{},                                      // ejercicios propios {id:{n,c,how}}
   extop:{},                                    // nota más aguda cómoda por ejercicio

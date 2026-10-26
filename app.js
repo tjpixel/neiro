@@ -450,6 +450,7 @@ function openEx(id){
       '<div class="row" style="gap:8px;padding:0 4px"><span class="pill gray">'+CATN[e.c]+'</span>'+(e.lv?'<span class="pill gray">'+(e.lv===2?'Avanzado':'Intermedio')+'</span>':'')+(inP?'<span class="pill tint">En tu práctica</span>':'')+'</div>'+
       '<p class="bd" style="padding:0 4px;white-space:pre-wrap">'+esc(e.how||'')+'</p>'+
       (e.pat?playerHTML(id,PV.tonic,PAT.on,true)+'<p class="fn l2" style="padding:0 6px;margin-top:-4px">Suena el acorde de la tónica y después el patrón. Canta encima; al llegar arriba de tu rango, baja solo.</p>':'')+
+      (e.pat?'<div class="group"><button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Sonido y velocidad</span><span class="val">'+pnoTxt()+'</span>'+chev()+'</div></button></div>':'')+
       (e.mode==='tuner'?'<button class="btn sec" onclick="openTuner(true)">'+ic('gauge',18)+'Abrir el afinador</button>':'')+
       (e.mode==='hold'&&DB.best[id]?'<div class="card row" style="padding:12px 16px;gap:12px;background:var(--sheet2)"><span class="ic soft" style="width:34px;height:34px;border-radius:10px;display:grid;place-items:center">'+ic('trophy',18)+'</span><div class="grow"><p class="fn l2">Tu marca</p><p class="hl num">'+DB.best[id]+' s</p></div></div>':'')+
       (e.pat?'<div class="group"><div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Hasta dónde llegas cómodo</p><p class="fn l2">Nota más aguda del patrón sin apretar</p></div>'+
@@ -705,6 +706,7 @@ function meSheet(){
       '<p class="fn l2">En este móvil · sin cuenta</p><span class="pill" style="margin-top:8px;background:var(--amber-soft);color:var(--amber)">Cinturón '+C.belt[1].toLowerCase()+'</span></div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Práctica</p><div class="group">'+
       row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row(goalsOf(p).length>1?'Objetivos':'Objetivo',goalsOf(p).length?(goalsOf(p).length>1?goalsOf(p).length+' elegidos':GOALS[goalsOf(p)[0]].n):'—','openGoals()')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
+    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Clases</p><div class="group">'+
       '<button class="cell" onclick="setTeacher(!DB.profile.teacher,true);openSheet(meSheet,true,true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Voy a clase</span><span class="sw'+(p.teacher?' on':'')+'" role="switch" aria-checked="'+!!p.teacher+'"></span></div></button>'+
       (p.teacher?row('Día de clase',p.classDay!=null?DIAS[p.classDay]:'—','openClassDay(true)'):'')+'</div></div>'+
@@ -721,6 +723,26 @@ function meSheet(){
       '<button class="cell" onclick="openPrivacy()"><span class="ic gray">'+ic('shield',17)+'</span><div class="cb"><span class="tt bd">Privacidad</span>'+chev()+'</div></button>'+
       '<button class="cell" onclick="confirmSheet(\'Borrar datos\',\'Se borrarán tu práctica, tus clases y tus grabaciones de este móvil. <b>No se puede deshacer.</b>\',\'Borrar\',\'doWipe()\',true)"><span class="ic red">'+ic('trash',17)+'</span><div class="cb"><span class="tt bd red">Borrar los datos de este móvil</span></div></button>'+
     '</div><p class="gfoot center" style="padding:16px 0 0">Neiro '+CFG.version+' · de la familia de Tsuyo</p></div>'};
+}
+/* piano de referencia: sonido y velocidad (se aplican desde la vuelta siguiente, sin cortar lo que suena) */
+const PNO_SND={suave:{n:'Suave',s:'La nota se mantiene igual mientras dura. La más fácil de seguir al empezar'},piano:{n:'Piano',s:'Como el de clase: golpe al empezar y se va apagando'}};
+const PNO_VEL={tranq:{n:'Tranquila',s:'Un 30 % más lenta y, antes del patrón, la nota de inicio sola'},normal:{n:'Normal',s:'El ritmo de cada ejercicio, sin pausas extra'}};
+const pnoTxt=()=>{const c=pianoCfg();return PNO_SND[c.snd].n+' · '+PNO_VEL[c.vel].n.toLowerCase()};
+function openPiano(push){
+  const prev=onSheetClose;
+  openSheet(()=>{const c=pianoCfg(),demo=PAT.on&&PAT.e&&PAT.e.demo;
+    return{title:'Piano de referencia',body:'<div class="pad stack">'+
+      '<p class="sb l2 center" style="padding:0 10px">Si te cuesta oír las notas, empieza con el sonido suave y la velocidad tranquila. Cuando las sigas sin esfuerzo, pasa al piano.</p>'+
+      '<p class="ghead" style="padding-left:16px;margin-top:6px">Sonido</p>'+Object.keys(PNO_SND).map(k=>optBtn(PNO_SND[k],c.snd===k,"setPno('snd','"+k+"')")).join('')+
+      '<p class="ghead" style="padding-left:16px;margin-top:6px">Velocidad</p>'+Object.keys(PNO_VEL).map(k=>optBtn(PNO_VEL[k],c.vel===k,"setPno('vel','"+k+"')")).join('')+
+      '<button class="btn '+(demo?'sec':'pri')+'" style="margin-top:6px" onclick="pnoDemo()">'+ic(demo?'pause':'play',18)+(demo?'Parar':'Probar con la escala de 5 notas')+'</button>'+
+      '<p class="fn l2 center">Si el piano ya está sonando, el cambio se oye desde la vuelta siguiente.</p></div>'}},push);
+  onSheetClose=()=>{if(PAT.on&&PAT.e&&PAT.e.demo)patStop();onSheetClose=prev};
+}
+function setPno(k,v){DB.cfg.pno=Object.assign({},pianoCfg(),{[k]:v});save();drawSheet()}
+function pnoDemo(){
+  if(PAT.on&&PAT.e&&PAT.e.demo){patStop();drawSheet();return}
+  const e=Object.assign({id:'escala5',demo:1},exBase('escala5'));patStart(e,startTonic(e),null);drawSheet();
 }
 function setProfile(k,v){DB.profile=Object.assign({},DB.profile,{[k]:v});save();render()}
 function openDays(){

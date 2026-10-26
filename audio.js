@@ -10,46 +10,87 @@ function ac(){
 }
 document.addEventListener('pointerdown',()=>ac(),{passive:true});
 
-/* ═════ PIANO ═════ un tono de piano sencillo: tres parciales con caída */
+/* ═════ PIANO ═════
+   Dos sonidos (Tú → Piano de referencia):
+   · suave: nota sostenida, igual de fuerte mientras dura. Es la más fácil de seguir al empezar,
+     porque no se apaga mientras cantas encima.
+   · piano: piano con más armónicos que antes, para que las notas graves se oigan bien en el altavoz del móvil.
+   Velocidad: tranquila (un 30 % más lenta, con la nota de inicio sola antes del patrón) o normal. */
 let MASTER=null,ROUTE=null;
 function master(){const c=ac();if(!c)return null;if(!MASTER){MASTER=c.createGain();MASTER.gain.value=.9;MASTER.connect(c.destination)}return MASTER}
 /* el patrón suena por su propio canal: así, al parar o pausar, se apaga al momento lo que ya estaba programado */
 const out_=()=>ROUTE||master();
-function pianoNote(m,t,dur,vol){
+/* ajustes del piano; si no hay nada elegido: suave y tranquila para quien está empezando, piano y normal para el resto */
+function pianoCfg(){
+  const c=(typeof DB!=='undefined'&&DB.cfg&&DB.cfg.pno)||{},ini=typeof DB==='undefined'||!DB.profile||!DB.profile.lvl||DB.profile.lvl==='ini';
+  return{snd:c.snd||(ini?'suave':'piano'),vel:c.vel||(ini?'tranq':'normal')};
+}
+const VEL={tranq:.7,normal:1};
+/* armónicos del piano: más presencia en graves (el altavoz del móvil casi no da la fundamental por debajo de 200 Hz) */
+const PIANO_H=[1,.62,.4,.26,.17,.11,.07,.045];
+function pianoNote(m,t,dur,vol,snd){
   const c=ac(),out=out_();if(!c||!out)return;
-  const f=hzOf(m),g=c.createGain(),v=vol||.26,end=t+Math.max(.15,dur);
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.012);
-  g.gain.exponentialRampToValueAtTime(v*.45,t+.25);g.gain.exponentialRampToValueAtTime(.0008,end+.35);
-  g.connect(out);
-  [[1,'triangle',1],[2,'sine',.32],[3,'sine',.1],[4,'sine',.04]].forEach(([k,ty,a])=>{
-    const o=c.createOscillator(),gg=c.createGain();o.type=ty;o.frequency.value=f*k;gg.gain.value=a;o.connect(gg);gg.connect(g);o.start(t);o.stop(end+.4);
+  snd=snd||pianoCfg().snd;
+  const f=hzOf(m),v=(vol||.26),end=t+Math.max(.15,dur);
+  const g=c.createGain(),lp=c.createBiquadFilter();lp.type='lowpass';lp.Q.value=.5;
+  lp.connect(g);g.connect(out);
+  if(snd==='suave'){
+    /* nota sostenida: entrada suave, se mantiene y se suelta al final, sin vibrato (para que la altura sea clara) */
+    lp.frequency.value=Math.min(5000,f*7);
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v*1.05,t+.045);
+    g.gain.setValueAtTime(v*1.05,end-.03);g.gain.linearRampToValueAtTime(v*.9,end);g.gain.linearRampToValueAtTime(0,end+.14);
+    /* en graves, más armónicos: es lo que el altavoz del móvil sí reproduce */
+    const lowB=f<260?1.5:1;
+    [[1,'triangle',.9],[2,'sine',.5*lowB],[3,'sine',.3*lowB],[4,'sine',.16*lowB],[5,'sine',.08*lowB]].forEach(([k,ty,a])=>{
+      const o=c.createOscillator(),gg=c.createGain();o.type=ty;o.frequency.value=f*k;gg.gain.value=a*.72;o.connect(gg);gg.connect(lp);o.start(t);o.stop(end+.2);
+    });
+    return;
+  }
+  /* piano: golpe corto, caída lenta mientras dura la nota y apagado al soltar */
+  lp.frequency.setValueAtTime(Math.min(9000,f*12),t);lp.frequency.exponentialRampToValueAtTime(Math.min(6000,f*6),t+.6);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v*.62,t+.008);
+  g.gain.exponentialRampToValueAtTime(v*.36,t+.18);g.gain.setTargetAtTime(v*.12,t+.18,1.1);
+  g.gain.setTargetAtTime(.0001,end,.12);
+  PIANO_H.forEach((a,i)=>{
+    const k=i+1;if(f*k>12000)return;
+    const o=c.createOscillator(),gg=c.createGain();o.type='sine';o.frequency.value=f*k*Math.sqrt(1+.0003*k*k);
+    gg.gain.value=a;o.connect(gg);gg.connect(lp);o.start(t);o.stop(end+.7);
   });
 }
 function glideNote(m1,m2,t,dur){
   const c=ac(),out=out_();if(!c||!out)return;
-  const g=c.createGain(),o=c.createOscillator();o.type='triangle';
-  o.frequency.setValueAtTime(hzOf(m1),t);o.frequency.exponentialRampToValueAtTime(hzOf(m2),t+dur);
+  const g=c.createGain(),lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=Math.min(5000,hzOf(Math.max(m1,m2))*5);
+  lp.connect(g);g.connect(out);
+  [[1,'triangle',1],[2,'sine',.38],[3,'sine',.16]].forEach(([k,ty,a])=>{
+    const o=c.createOscillator(),gg=c.createGain();o.type=ty;
+    o.frequency.setValueAtTime(hzOf(m1)*k,t);o.frequency.exponentialRampToValueAtTime(hzOf(m2)*k,t+dur);
+    gg.gain.value=a;o.connect(gg);gg.connect(lp);o.start(t);o.stop(t+dur+.15);
+  });
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.2,t+.05);g.gain.setValueAtTime(.2,t+dur-.05);g.gain.linearRampToValueAtTime(0,t+dur+.1);
-  o.connect(g);g.connect(out);o.start(t);o.stop(t+dur+.15);
 }
 function tone(m,dur){const c=ac();if(!c)return;pianoNote(m,c.currentTime+.02,dur||1.4)}
-function chord(m,t,dur){[0,4,7].forEach(k=>pianoNote(m+k,t,dur,.13));pianoNote(m-12,t,dur,.12)}
+/* acorde de la tónica: en voces graves el bajo una octava abajo se quita, porque emborrona */
+function chord(m,t,dur){[0,4,7].forEach(k=>pianoNote(m+k,t,dur,.12));if(m>=48)pianoNote(m-12,t,dur,.1)}
 function ding(){
-  const c=ac();if(c){[0,.18,.36].forEach(d=>pianoNote(88,c.currentTime+d,.18,.16))}
+  const c=ac();if(c){[0,.18,.36].forEach(d=>pianoNote(88,c.currentTime+d,.18,.16,'piano'))}
   if(navigator.vibrate)navigator.vibrate([180,90,180]);
 }
 
 /* ═════ PATRÓN ═════
    Toca el acorde de la tónica, después el patrón, y vuelve a empezar medio tono más arriba.
+   En velocidad tranquila, entre el acorde y el patrón suena sola la nota de inicio.
    Al llegar al límite de tu rango, baja. Devuelve la duración de una pasada en segundos. */
-function patternLength(e){const b=60/(e.bpm||100);return 1.1+(e.glide?(e.pat.length-1)*b*2:e.pat.length*b)+(e.hold?e.hold:0)+.9}
 function playPattern(e,tonic,t0){
   const c=ac();if(!c||!e.pat)return 0;
-  let t=(t0||c.currentTime)+.05;const b=60/(e.bpm||100);
-  chord(tonic,t,.8);t+=1.1;
+  const pc=pianoCfg(),k=VEL[pc.vel]||1,calm=pc.vel==='tranq';
+  /* las sirenas ya son lentas: en tranquila solo se frenan un poco */
+  const b=60/((e.bpm||100)*(e.glide?Math.max(k,.85):k));
+  let t=(t0||c.currentTime)+.05;
+  chord(tonic,t,calm?1.1:.8);t+=calm?1.5:1.1;
+  if(calm&&!e.glide&&!e.hold){pianoNote(tonic+e.pat[0],t,.9);t+=1.3}
   if(e.glide){for(let i=1;i<e.pat.length;i++){glideNote(tonic+e.pat[i-1],tonic+e.pat[i],t,b*2);t+=b*2}}
-  else e.pat.forEach((k,i)=>{const len=e.hold&&i===0?e.hold:(e.stac?b*.35:b*.95);pianoNote(tonic+k,t,len);t+=e.hold&&i===0?e.hold:b});
-  return t-(t0||c.currentTime);
+  else e.pat.forEach((s,i)=>{const len=e.hold&&i===0?e.hold:(e.stac?b*.35:b*.95);pianoNote(tonic+s,t,len);t+=e.hold&&i===0?e.hold:b});
+  return t-(t0||c.currentTime)+(calm?.5:0);
 }
 const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null};
 /* dir: 1 sube, -1 baja (al seguir tras una pausa, continúa en el sentido en que iba) */
