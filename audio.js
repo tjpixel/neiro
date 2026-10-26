@@ -23,9 +23,10 @@ const out_=()=>ROUTE||master();
 /* ajustes del piano; si no hay nada elegido: suave y tranquila para quien está empezando, piano y normal para el resto */
 function pianoCfg(){
   const c=(typeof DB!=='undefined'&&DB.cfg&&DB.cfg.pno)||{},ini=typeof DB==='undefined'||!DB.profile||!DB.profile.lvl||DB.profile.lvl==='ini';
-  return{snd:c.snd||(ini?'suave':'piano'),vel:c.vel||(ini?'tranq':'normal'),view:c.view==='tec'?'tec':'esc'};
+  return{snd:c.snd||(ini?'suave':'piano'),vel:c.vel||(ini?'tranq':'normal'),view:c.view==='tec'?'tec':'esc',fin:FIN_OPTS.includes(c.fin)?c.fin:'cadencia'};
 }
 const VEL={tranq:.7,normal:1};
+const FIN_OPTS=['cadencia','cuenco','campana','kalimba','soplo','nada'];
 /* armónicos del piano: más presencia en graves (el altavoz del móvil casi no da la fundamental por debajo de 200 Hz) */
 const PIANO_H=[1,.62,.4,.26,.17,.11,.07,.045];
 function pianoNote(m,t,dur,vol,snd){
@@ -71,9 +72,44 @@ function glideNote(m1,m2,t,dur){
 function tone(m,dur){const c=ac();if(!c)return;pianoNote(m,c.currentTime+.02,dur||1.4)}
 /* acorde de la tónica: en voces graves el bajo una octava abajo se quita, porque emborrona */
 function chord(m,t,dur){[0,4,7].forEach(k=>pianoNote(m+k,t,dur,.12));if(m>=48)pianoNote(m-12,t,dur,.1)}
-function ding(){
-  const c=ac();if(c){[0,.18,.36].forEach(d=>pianoNote(88,c.currentTime+d,.18,.16,'piano'))}
-  if(navigator.vibrate)navigator.vibrate([180,90,180]);
+/* ═════ AVISO AL ACABAR EL PASO ═════
+   Pensado para una sala de canto en silencio: suave, sin golpe seco y que se apaga solo.
+   Se elige en Tú → Piano de referencia (cfg.pno.fin). La vibración es una sola, corta. */
+const hzM=m=>440*Math.pow(2,(m-69)/12); // MIDI; Do3 (Do central) = 60
+function finVoice(t,parts,env,lp){
+  const c=ac(),m=master();if(!c||!m)return;
+  const g=c.createGain(),f=c.createBiquadFilter();f.type='lowpass';f.frequency.value=lp||4000;f.Q.value=.3;
+  f.connect(g);g.connect(m);env(g.gain,t);
+  parts.forEach(p=>{const o=c.createOscillator(),gg=c.createGain();o.type=p.type||'sine';o.frequency.value=p.f;
+    gg.gain.setValueAtTime(p.a,t);if(p.dec)gg.gain.setTargetAtTime(0,t,p.dec);
+    o.connect(gg);gg.connect(f);o.start(t);o.stop(t+(p.len||4))});
+}
+const FIN={
+  /* cuenco: parciales inarmónicos con un leve batido; entrada blanda y caída larga */
+  cuenco(t){const f=hzM(55);finVoice(t,[{f,a:.5,len:6},{f:f*1.003,a:.25,len:6},{f:f*2.71,a:.16,dec:1.6,len:5},{f:f*5.15,a:.05,dec:.7,len:3}],
+    (g,t)=>{g.setValueAtTime(0,t);g.linearRampToValueAtTime(.16,t+.06);g.setTargetAtTime(0,t+.15,1.5)},2200)},
+  /* campanilla: Sol y Mi con un armónico de campana */
+  campana(t){[[67,0],[64,.42]].forEach(([m,d])=>{const f=hzM(m);finVoice(t+d,[{f,a:.6,len:3},{f:f*2,a:.18,dec:.4,len:2},{f:f*3.01,a:.06,dec:.2,len:1}],
+    (g,t)=>{g.setValueAtTime(0,t);g.linearRampToValueAtTime(.12,t+.012);g.setTargetAtTime(0,t+.02,.55)},3500)})},
+  /* cadencia: arpegio de dominante que se resuelve en la tónica que estabas cantando */
+  cadencia(t,T){T=T||60;while(T<55)T+=12;while(T>67)T-=12;
+    [[T+7,0],[T+11,.22],[T+14,.44]].forEach(([m,d])=>finVoice(t+d,[{f:hzM(m),a:.5,type:'triangle',len:1.2}],
+      (g,t)=>{g.setValueAtTime(0,t);g.linearRampToValueAtTime(.08,t+.03);g.setTargetAtTime(0,t+.05,.25)},2400));
+    [T,T+4,T+7,T+12].forEach(m=>finVoice(t+.78,[{f:hzM(m),a:.42,type:'triangle',len:3},{f:hzM(m)*2,a:.08,len:2}],
+      (g,t)=>{g.setValueAtTime(0,t);g.linearRampToValueAtTime(.06,t+.08);g.setTargetAtTime(0,t+.4,.7)},2000))},
+  /* kalimba: pulsación corta con su armónico característico */
+  kalimba(t){[[57,0],[52,.3]].forEach(([m,d])=>{const f=hzM(m);finVoice(t+d,[{f,a:.7,dec:.5,len:2},{f:f*5.4,a:.12,dec:.05,len:.3},{f:f*2,a:.08,dec:.15,len:.6}],
+    (g,t)=>{g.setValueAtTime(0,t);g.linearRampToValueAtTime(.2,t+.004);g.setTargetAtTime(0,t+.01,.4)},3000)})},
+  /* soplo: quinta Do3–Sol3 que crece y se va, sin ataque */
+  soplo(t){finVoice(t,[{f:hzM(60),a:.5,len:3.2},{f:hzM(67),a:.38,len:3.2},{f:hzM(72),a:.1,len:3.2}],
+    (g,t)=>{g.setValueAtTime(0,t);g.linearRampToValueAtTime(.09,t+.9);g.setValueAtTime(.09,t+1.3);g.linearRampToValueAtTime(0,t+3)},1800)},
+  nada(){}
+};
+/* tonic: la nota en la que estabas cantando (para la cadencia); k: para probar un aviso concreto sin vibrar */
+function ding(tonic,k){
+  const c=ac(),key=k||pianoCfg().fin;
+  if(c&&FIN[key])FIN[key](c.currentTime+.05,tonic);
+  if((!k||k==='nada')&&navigator.vibrate)try{navigator.vibrate(60)}catch(e){}
 }
 
 /* ═════ PATRÓN ═════

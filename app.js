@@ -733,6 +733,8 @@ function meSheet(){
 /* piano de referencia: sonido y velocidad (se aplican desde la vuelta siguiente, sin cortar lo que suena) */
 const PNO_SND={suave:{n:'Suave',s:'La nota se mantiene igual mientras dura. La más fácil de seguir al empezar'},piano:{n:'Piano',s:'Como el de clase: golpe al empezar y se va apagando'}};
 const PNO_VEL={tranq:{n:'Tranquila',s:'Un 30 % más lenta y, antes del patrón, la nota de inicio sola'},normal:{n:'Normal',s:'El ritmo de cada ejercicio, sin pausas extra'}};
+const PNO_FIN={cadencia:{n:'Cadencia',s:'Un arpegio que se resuelve en la nota que cantabas. Encaja con el piano'},cuenco:{n:'Cuenco',s:'Grave y meditativo; vibra y se queda flotando unos segundos'},campana:{n:'Campanilla',s:'Dos notas suaves, como el timbre de un estudio'},kalimba:{n:'Kalimba',s:'Dos pulsaciones cálidas y breves'},soplo:{n:'Soplo de quinta',s:'Entra y sale despacio, sin golpe. El más discreto'},nada:{n:'Sin sonido',s:'Solo una vibración corta'}};
+const finTonic=()=>PAT.round?PAT.round.tonic:(PV&&PV.tonic)||60;
 const pnoTxt=()=>{const c=pianoCfg();return PNO_SND[c.snd].n+' · '+PNO_VEL[c.vel].n.toLowerCase()};
 function openPiano(push){
   const prev=onSheetClose;
@@ -744,9 +746,10 @@ function openPiano(push){
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Vista</p>'+Object.keys(PNO_VIEW).map(k=>optBtn(PNO_VIEW[k],c.view===k,"setPno('view','"+k+"')")).join('')+
       '<div class="pcard" style="background:var(--sheet2);margin-top:6px">'+guideHTML('escala5')+'</div>'+
       '<button class="btn '+(demo?'sec':'pri')+'" onclick="pnoDemo()">'+ic(demo?'pause':'play',18)+(demo?'Parar':'Probar con la escala de 5 notas')+'</button>'+
-      '<p class="fn l2 center">Si el piano ya está sonando, el cambio se oye desde la vuelta siguiente.</p></div>'}},push);
+      '<p class="fn l2 center">Si el piano ya está sonando, el cambio se oye desde la vuelta siguiente.</p>'+'<p class="ghead" style="padding-left:16px;margin-top:18px">Aviso al acabar el paso</p>'+Object.keys(PNO_FIN).map(k=>optBtn(PNO_FIN[k],c.fin===k,"setFin('"+k+"')")).join('')+'<p class="fn l2" style="padding:0 16px">Toca uno para oírlo. Además, el móvil vibra una vez, corto.</p>'+'</div>'}},push);
   onSheetClose=()=>{if(PAT.on&&PAT.e&&PAT.e.demo)patStop();onSheetClose=prev};
 }
+function setFin(k){setPno('fin',k);ding(k==='cadencia'?finTonic():0,k)}
 function setPno(k,v){DB.cfg.pno=Object.assign({},pianoCfg(),{[k]:v});save();drawSheet()}
 function pnoDemo(){
   if(PAT.on&&PAT.e&&PAT.e.demo){patStop();drawSheet();return}
@@ -1065,7 +1068,7 @@ function completeStep(){
   if(SS.holdOn)holdStop();
   SS.left=0;SS.run=false;SS.pauseAt=0;endPrev=null;SS.patWas=SS.tunWas=false;
   /* pita al acabarse, pero el piano termina la vuelta entera antes de callarse */
-  patFinish(()=>{drawPlayerState();renderAcc()});tunerStop();if(!SS.beeped){SS.beeped=true;ding()}
+  patFinish(()=>{drawPlayerState();renderAcc()});tunerStop();if(!SS.beeped){SS.beeped=true;ding(finTonic())}
   sessPersist();renderSession();renderAcc();
 }
 /* temporizador: se vacía en sentido horario y avisa al acabarse: ámbar en los últimos 10 s, rojo en los 3 últimos, con vibración (como en Tsuyo) */
