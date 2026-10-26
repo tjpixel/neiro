@@ -977,14 +977,14 @@ function startSession(short){
 function sessPersist(out){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,left:stepLeft(),sec:(SS.steps[SS.i]||{}).sec,t0:SS.t0,mins:SS.mins,wait:!!SS.wait,out:!!out}:null)}
 /* práctica que dejaste con «Salir» hoy: se puede seguir desde el mismo tiempo, sin sumar el rato fuera */
 function savedSess(){const st=PREF.get('sess',null);return st&&st.out&&st.d===T()?st:null}
-const savedSec=st=>(st.used||[]).reduce((a,b)=>a+(b||0),0)+Math.max(0,(st.sec||0)-(st.left||0));
+const savedSec=st=>(st.used||[]).reduce((a,b)=>a+(b||0),0)+Math.max(0,(st.sec||0)-Math.max(0,st.left||0));
 function restoreSess(st,run){
   Object.assign(SS,{on:true,min:!run,steps:buildSteps(st.mins),i:Math.min(st.i||0,1e3),t0:st.t0||Date.now(),used:st.used||[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:st.mins||null});
   if(SS.i>=SS.steps.length)SS.i=SS.steps.length-1;
   const s=SS.steps[SS.i];if(st.sec)s.sec=st.sec;
-  enterStep(false);if(st.left!=null){SS.left=st.left;SS.beeped=st.left<=0}
+  enterStep(false);if(st.left!=null){SS.left=Math.max(0,st.left);SS.beeped=SS.left<=0}
   SS.wait=!!st.wait;
-  if(run&&!SS.wait){SS.run=true;SS.endAt=Date.now()+SS.left*1000}
+  if(run&&!SS.wait&&SS.left>0){SS.run=true;SS.endAt=Date.now()+SS.left*1000}
   sessPersist();
   if(run){$('session').classList.add('on');keepAwake(true);renderSession()}
   renderAcc();
@@ -996,8 +996,10 @@ function enterStep(autostart){
 }
 /* una sola fuente de verdad para el tiempo: lo que queda del paso, cómo se escribe y el tiempo de práctica (sin pausas) */
 const stepLeft=()=>SS.run?(SS.endAt-Date.now())/1000:SS.left;
-const fmtL=L=>L>0?mmss(Math.ceil(L)):'+'+mmss(-L);
-const ringLbl=(L,s)=>L<=0?'Tiempo · pasa cuando quieras':(SS.run?'de '+mmss(s.sec):(SS.wait?'Cuando quieras':'En pausa'));
+/* al acabarse el tiempo, el paso se para solo: sin segundos de más */
+const fmtL=L=>L>0?mmss(Math.ceil(L)):'Hecho';
+const doneLbl=()=>SS.i>=SS.steps.length-1?'Ya puedes terminar':'Pasa al siguiente';
+const ringLbl=(L,s)=>L<=0?doneLbl():(SS.run?'de '+mmss(s.sec):(SS.wait?'Cuando quieras':'En pausa'));
 function practiceSec(){return SS.used.reduce((a,b)=>a+(b||0),0)+(SS.ph==='step'?stepElapsed():0)}
 const holdSec=()=>Math.max(0,Math.floor(((SS.run||!SS.pauseAt?Date.now():SS.pauseAt)-SS.holdT0)/1000));
 function stepElapsed(){const s=SS.steps[SS.i];if(!s)return 0;const left=SS.run?(SS.endAt-Date.now())/1000:SS.left;return Math.max(0,s.sec-left)}
@@ -1014,6 +1016,7 @@ function togglePause(){
     SS.patWas=PAT.on;SS.patDir=PAT.dir;SS.tunWas=TUN.on;patStop();tunerStop();sessPersist();
     renderSession();renderAcc();return;
   }
+  if(SS.left<=0)return; // paso hecho: el piano o el afinador se pueden usar, pero ya no suman tiempo
   SS.endAt=Date.now()+SS.left*1000;SS.run=true;SS.wait=false;
   if(SS.holdOn&&SS.pauseAt)SS.holdT0+=Date.now()-SS.pauseAt;
   SS.pauseAt=0;const pw=SS.patWas,tw=SS.tunWas;SS.patWas=SS.tunWas=false;
@@ -1021,7 +1024,16 @@ function togglePause(){
   if(pw&&!PAT.on&&!SS.min)pvToggle(SS.patDir);
   if(tw&&!TUN.on&&!SS.min)tunerGo().then(ok=>{if(ok)renderSession()});
 }
-function addMin(){endPrev=null;if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;tick()}
+function addMin(){endPrev=null;const was=SS.left<=0&&!SS.run;if(SS.run)SS.endAt+=60000;else SS.left+=60;SS.steps[SS.i].sec+=60;SS.beeped=false;
+  if(was){SS.run=true;SS.wait=false;SS.pauseAt=0;SS.endAt=Date.now()+SS.left*1000;sessPersist();renderSession();renderAcc();return}
+  tick()}
+/* el tiempo del paso se ha cumplido: se para todo (temporizador, reloj, piano, afinador, siseo) y espera a «Siguiente» */
+function completeStep(){
+  if(SS.holdOn)holdStop();
+  SS.left=0;SS.run=false;SS.pauseAt=0;endPrev=null;SS.patWas=SS.tunWas=false;
+  patStop();tunerStop();if(!SS.beeped){SS.beeped=true;ding()}
+  sessPersist();renderSession();renderAcc();
+}
 /* temporizador: se vacía en sentido horario y avisa al acabarse: ámbar en los últimos 10 s, rojo en los 3 últimos, con vibración (como en Tsuyo) */
 const endCol=L=>L<=0?'var(--tint)':(L<=3.05?'var(--red)':(L<=10.05?'var(--warn)':'var(--tint)'));
 const endTxt=L=>L<=0?'':(L<=3.05?'var(--red)':(L<=10.05?'var(--amber)':''));
@@ -1033,17 +1045,17 @@ function tick(){
   const c=$('ssClock');if(c)c.textContent=mmss(practiceSec());
   if(SS.ph!=='step')return;
   const s=SS.steps[SS.i],L=stepLeft();
-  if(SS.run&&L<=0&&!SS.beeped){SS.beeped=true;ding()}
+  if(SS.run&&L<=0){completeStep();return}
   const t=$('ssT'),a=$('ssArc'),lb=$('ssL');
   if(t){t.textContent=fmtL(L);t.style.color=endTxt(L)}
-  if(a){const C=2*Math.PI*82;a.setAttribute('stroke-dashoffset',-C*(1-Math.max(0,L)/s.sec));a.setAttribute('stroke',endCol(L))}
+  if(a){const C=2*Math.PI*82;a.setAttribute('stroke-dashoffset',L<=0?0:-C*(1-L/s.sec));a.setAttribute('stroke',endCol(L))}
   if(SS.run)endBuzz(L);else endPrev=null;
   if(lb)lb.textContent=ringLbl(L,s);
   // respiración: 4 inhala · 4 sostén · 8 suelta
   const br=$('ssBreath');
   if(br){const el=stepElapsed()%16,ph=el<4?['Inhala',1,4-el]:(el<8?['Sostén',1,8-el]:['Suelta',.55,16-el]);
     br.style.setProperty('--b',SS.run?(el<4?.55+.45*(el/4):(el<8?1:1-.45*((el-8)/8))):.55);
-    const tx=$('ssBrT'),n=$('ssBrN');if(tx)tx.textContent=SS.run?ph[0]:(SS.wait?'Preparado':'En pausa');if(n)n.textContent=SS.run?Math.ceil(ph[2]):''}
+    const tx=$('ssBrT'),n=$('ssBrN');if(tx)tx.textContent=SS.run?ph[0]:(SS.left<=0?'Hecho':(SS.wait?'Preparado':'En pausa'));if(n)n.textContent=SS.run?Math.ceil(ph[2]):''}
   if(SS.holdOn){const h=$('ssHold');if(h)h.textContent=holdSec()+' s'}
   renderAcc();
 }
@@ -1060,8 +1072,8 @@ function renderSession(){
   const s=SS.steps[SS.i],e=s.ex?exBase(s.ex):null,last=SS.i===SS.steps.length-1,nx=SS.steps[SS.i+1];
   const L=stepLeft(),R=82,C=2*Math.PI*R,RING=160;
   const ring=(sz)=>'<div class="ring" style="width:'+sz+'px;height:'+sz+'px"><svg width="'+sz+'" height="'+sz+'" viewBox="0 0 176 176" aria-hidden="true"><circle cx="88" cy="88" r="'+R+'" fill="none" stroke="var(--fill2)" stroke-width="11"/>'+
-    '<circle id="ssArc" cx="88" cy="88" r="'+R+'" fill="none" stroke="'+endCol(L)+'" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(-C*(1-Math.max(0,L)/s.sec))+'"/></svg>'+
-    '<div class="in"><span class="rnd num bold" style="font-size:'+(sz>150?46:34)+'px;line-height:1.1;color:'+endTxt(L)+'" id="ssT">'+fmtL(L)+'</span><span class="fn l2 num" id="ssL">'+ringLbl(L,s)+'</span></div></div>';
+    '<circle id="ssArc" cx="88" cy="88" r="'+R+'" fill="none" stroke="'+endCol(L)+'" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(L<=0?0:-C*(1-L/s.sec))+'"/></svg>'+
+    '<div class="in"><span class="rnd num bold" style="font-size:'+(L<=0?(sz>150?34:26):(sz>150?46:34))+'px;line-height:1.1;color:'+endTxt(L)+'" id="ssT">'+fmtL(L)+'</span><span class="fn l2 num" id="ssL">'+ringLbl(L,s)+'</span></div></div>';
   let title=e?esc(e.n):s.bn,sub=s.of>1?s.bn+' · '+s.k+' de '+s.of:s.bn,body='';
   const lc=lastClass();
   if(s.b==='cal'&&!e){title='Calentamiento libre';body='<p class="sb" style="margin-top:14px">Calienta como te enseñe tu profe: labios, humming, sirenas suaves. Sin forzar.</p><div style="display:flex;justify-content:center;margin-top:20px">'+ring(RING)+'</div>'}
@@ -1094,7 +1106,7 @@ function renderSession(){
   }else if(s.b==='gus'){
     body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.5)+ring(RING)+'</div>';
   }
-  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center"><button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause()" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button><button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
+  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center">'+(L<=0?'':'<button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause()" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button>')+'<button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
     '<button class="btn pri lg" style="margin-top:6px" onclick="nextStep()">'+(last?ic('check',22,2.6)+'Terminar':'Siguiente: '+esc(nx.ex?exName(nx.ex):nx.bn))+'</button></div>';
   $('session').innerHTML='<div class="fullin">'+sessHead()+'<p class="fn l2" style="margin-top:20px">'+sub+'</p><h1 class="lt balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
   if(e&&e.mode==='tuner'&&TUN.on){TUN.cb=(r)=>tunerUpdate(r)}
@@ -1103,9 +1115,11 @@ const miniTimer=()=>{const L=stepLeft(),s=SS.steps[SS.i];return '<div class="row
 function holdToggle(){
   const s=SS.steps[SS.i];
   if(!SS.holdOn){if(!SS.run)togglePause();SS.holdOn=true;SS.holdT0=Date.now();renderSession();return}
-  const sec=holdSec();SS.holdOn=false;
+  holdStop();renderSession();
+}
+function holdStop(){
+  const s=SS.steps[SS.i],sec=holdSec();SS.holdOn=false;
   if(sec>=3){const prev=DB.best[s.ex]||0;if(sec>prev){DB.best[s.ex]=sec;save();toast(prev?'¡Nueva marca: '+sec+' s!':'Marca apuntada: '+sec+' s')}else toast(sec+' s')}
-  renderSession();
 }
 function minimizeSession(){SS.min=true;$('session').classList.remove('on');patStop();tunerStop();render()}
 function expandSession(){if(!SS.on)return;SS.min=false;$('session').classList.add('on');renderSession();renderAcc();keepAwake(true)}
@@ -1161,7 +1175,7 @@ function renderAcc(){
   const s=SS.steps[SS.i],L=SS.ph==='step'?(SS.run?(SS.endAt-Date.now())/1000:SS.left):0,C=2*Math.PI*16.5,pct=SS.ph==='step'?Math.max(0,L)/s.sec:1;
   a.innerHTML='<div class="ring" style="width:40px;height:40px"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16.5" fill="none" stroke="var(--fill)" stroke-width="4"/>'+
     '<circle cx="20" cy="20" r="16.5" fill="none" stroke="'+(SS.ph==='step'?endCol(L):'var(--tint)')+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+(-C*(1-pct))+'"/></svg><div class="in">'+(SS.ph==='step'?'':ic('check',15))+'</div></div>'+
-    '<div class="grow"><p class="fn semi num">'+(SS.ph==='step'?(SS.run?(L>0?mmss(Math.ceil(L)):'Tiempo · '+fmtL(L)):(SS.wait?'Sin empezar':'En pausa')):'Falta valorar')+'</p><p class="c1 l2 ell">'+esc(s?(s.ex?exName(s.ex):s.bn):'Práctica')+'</p></div>'+
+    '<div class="grow"><p class="fn semi num">'+(SS.ph==='step'?(SS.run?mmss(Math.ceil(Math.max(0,L))):(L<=0?'Paso hecho':(SS.wait?'Sin empezar':'En pausa'))):'Falta valorar')+'</p><p class="c1 l2 ell">'+esc(s?(s.ex?exName(s.ex):s.bn):'Práctica')+'</p></div>'+
     '<span class="btn sec sm" style="height:38px">Abrir</span>';
 }
 
