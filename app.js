@@ -1138,9 +1138,17 @@ function renderSession(){
     body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.5)+ring(RING)+'</div>';
   }
   const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center">'+(L<=0?'':'<button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause()" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button>')+'<button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
-    '<button class="btn pri lg" style="margin-top:6px" onclick="nextStep()">'+(last?ic('check',22,2.6)+'Terminar':'Siguiente: '+esc(nx.ex?exName(nx.ex):nx.bn))+'</button></div>';
+    nextBtn(L,last,nx)+'</div>';
   $('session').innerHTML='<div class="fullin">'+sessHead()+'<p class="fn l2" style="margin-top:20px">'+sub+'</p><h1 class="lt balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
   if(e&&e.mode==='tuner'&&TUN.on){TUN.cb=(r)=>tunerUpdate(r)}
+}
+/* «Siguiente» solo es protagonista cuando toca (como en Tsuyo, un solo lima grande: lo que toca hacer ahora).
+   Con el paso pendiente o en marcha es una tarjeta gris para pasar antes de tiempo; con el paso hecho, el botón grande en lima. */
+function nextBtn(L,last,nx){
+  const nm=last?'':esc(nx.ex?exName(nx.ex):nx.bn);
+  if(L<=0)return '<button class="btn pri lg" style="margin-top:6px" onclick="nextStep()">'+(last?ic('check',22,2.6)+'Terminar':'Siguiente: '+nm)+'</button>';
+  return '<button class="nxbtn" onclick="nextStep()" aria-label="'+(last?'Terminar la práctica ahora':'Pasar a '+nm+' sin acabar este paso')+'"><span class="pi">'+(last?ic('check',18,2.6):ic('chevR',18,2.6))+'</span>'+
+    '<span class="grow" style="min-width:0"><span class="hl ell" style="display:block">'+(last?'Terminar ahora':'Siguiente: '+nm)+'</span><span class="fn l2" style="display:block">Sin acabar este paso</span></span></button>';
 }
 const miniTimer=()=>{const L=stepLeft(),s=SS.steps[SS.i];return '<div class="mtimer'+(L<=0?' done':'')+'">'+ic(L<=0?'check':'clock',16,L<=0?2.6:2)+'<span class="fn num semi" id="ssT" style="color:'+endTxt(L)+'">'+fmtL(L)+'</span><span class="c1 l2" id="ssL">'+ringLbl(L,s)+'</span></div>'};
 function holdToggle(){
