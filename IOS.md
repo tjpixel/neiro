@@ -9,7 +9,7 @@ La web de pruebas fija el diseño, los flujos y el formato de datos. En SwiftUI 
 | Grabaciones en IndexedDB | Archivos `.m4a` en el móvil, copia en iCloud Drive (Plus) |
 | Piano de referencia (Web Audio) | AVAudioEngine con un sampler de piano real |
 | Escalera y teclado del piano (`escalera.js`, SVG) | Vista de SwiftUI (Canvas) que lee el mismo plan de la vuelta (`patPlan`): lo encendido es lo que suena |
-| Afinador (autocorrelación McLeod) | AVAudioEngine + la misma detección, a 60 lecturas por segundo |
+| Afinador (McLeod con FFT, media de 0,35 s en pantalla, margen por nivel, no escucha mientras suena la referencia) | AVAudioEngine + vDSP (Accelerate) para la misma detección y las mismas reglas; con auriculares podría escuchar también mientras suena el piano. Opción futura: modelo tipo CREPE en Core ML |
 | Grabadora (MediaRecorder) | AVAudioRecorder, sigue grabando con la pantalla apagada |
 | Temporizador de la práctica | **Actividad en vivo**: bloque y tiempo en la pantalla de bloqueo y la Dynamic Island |
 | Aviso «Apunta la clase de hoy» | **Notificación** al acabar la hora de clase |

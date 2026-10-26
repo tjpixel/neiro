@@ -364,7 +364,11 @@ body.locked{position:fixed;left:0;right:0;overflow:hidden}
 /* afinador */
 .tuner{padding:16px 16px 14px;border-radius:26px;background:var(--bg2);text-align:center}
 .tgauge{position:relative;height:44px;margin:12px 6px 0}
-.tgauge .scale{position:absolute;left:0;right:0;top:20px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--red-soft),var(--tint-soft) 40%,var(--tint) 50%,var(--tint-soft) 60%,var(--red-soft))}
+.tgauge .scale{position:absolute;left:0;right:0;top:20px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--red-soft),var(--fill2) 30%,var(--fill2) 70%,var(--red-soft))}
+.tgauge .zone{position:absolute;top:18px;height:8px;border-radius:4px;background:var(--tint);opacity:.9}
+.thold{height:6px;border-radius:3px;background:var(--fill2);overflow:hidden;margin:14px 6px 0}
+.thold i{display:block;height:100%;border-radius:3px;background:var(--tint);transition:width .1s linear}
+.thold.done i{background:var(--ink)}
 .tgauge .mid{position:absolute;left:50%;top:6px;width:2px;height:32px;margin-left:-1px;background:var(--label3);border-radius:1px}
 .tgauge .needle{position:absolute;left:50%;top:10px;width:16px;height:24px;margin-left:-8px;border-radius:8px;background:var(--label);transition:left .12s,background .2s}
 .tgauge .needle.ok{background:var(--ink)}

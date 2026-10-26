@@ -616,23 +616,66 @@ async function recSave(){
 }
 
 /* ═════ AFINADOR Y RANGO ═════ */
-const tunerHTML=(target)=>'<div class="tuner"'+(SHS.length?' style="background:var(--sheet2)"':'')+'><p class="fn l2" id="tnS">'+(target!=null?'Objetivo: '+noteName(target):'Canta una nota')+'</p><p class="tnote num" id="tnN">—</p><p class="fn l2 num" id="tnC">&nbsp;</p>'+
-  '<div class="tgauge"><div class="scale"></div><div class="mid"></div><div class="needle" id="tnX" style="left:50%"></div></div><div class="row" style="justify-content:space-between"><span class="c1 l3">Bajo</span><span class="c1 l3">Afinado</span><span class="c1 l3">Alto</span></div></div>';
+/* margen de «Afinado»: los oyentes sin formación aceptan unos 25 cents; los expertos, unos 10 */
+const TUN_TOL={amable:{n:'Amable',c:25,s:'±25 cents. Lo que la mayoría de oyentes oye como afinado. Para empezar'},
+  media:{n:'Media',c:15,s:'±15 cents. Pide más precisión, para quien ya tiene oído'},
+  estricta:{n:'Estricta',c:10,s:'±10 cents. Precisión de profesional'}};
+const TUN_BY_LVL={ini:'amable',med:'media',av:'estricta'};
+const tunTolKey=()=>{const k=DB.cfg.tun&&DB.cfg.tun.tol;return TUN_TOL[k]?k:(TUN_BY_LVL[(DB.profile||{}).lvl]||'amable')};
+const tunTol=()=>TUN_TOL[tunTolKey()].c;
+const tunTolTxt=()=>TUN_TOL[tunTolKey()].n+' · ±'+tunTol()+' cents';
+/* la aguja va de −50 a +50 cents; la franja lima es el margen elegido */
+const tunerHTML=(target)=>{const tol=tunTol();return '<div class="tuner"'+(SHS.length?' style="background:var(--sheet2)"':'')+'><p class="fn l2" id="tnS">'+(target!=null?'Objetivo: '+noteName(target):'Canta una nota')+'</p><p class="tnote num" id="tnN">—</p><p class="fn l2 num" id="tnC">&nbsp;</p>'+
+  '<div class="tgauge"><div class="scale"></div><div class="zone" style="left:'+(50-tol)+'%;width:'+(2*tol)+'%"></div><div class="mid"></div><div class="needle" id="tnX" style="left:50%;opacity:.35"></div></div><div class="row" style="justify-content:space-between"><span class="c1 l3">Bajo</span><span class="c1 l3">Afinado</span><span class="c1 l3">Alto</span></div>'+
+  (target!=null?holdHTML():'')+'</div>'};
 let TUNT=null;
 function tunerUpdate(r){
   const n=$('tnN'),c=$('tnC'),x=$('tnX');if(!n)return;
-  if(!r){x.style.opacity=.35;return}
-  const m=TUNT!=null?TUNT:Math.round(r.m),cents=Math.round((r.m-m)*100),cl=Math.max(-50,Math.min(50,cents));
-  n.textContent=noteName(Math.round(r.m));c.textContent=(TUNT!=null&&Math.round(r.m)!==TUNT?(r.m>TUNT?'Demasiado alto':'Demasiado bajo'):(Math.abs(cents)<=10?'Afinado':(cents>0?'+':'')+cents+' cents'));
-  x.style.opacity=1;x.style.left=(50+cl)+'%';x.classList.toggle('ok',Math.abs(cents)<=10&&(TUNT==null||Math.round(r.m)===TUNT));
+  if(!r||r.muted){x.style.opacity=.35;x.classList.remove('ok');if(r)c.textContent='Escuchando la referencia…';tunHold(false);return}
+  const tol=tunTol(),ref=TUNT!=null?TUNT:r.note,d=r.m-ref,cents=Math.round(d*100),cl=Math.max(-50,Math.min(50,cents));
+  const far=TUNT!=null&&Math.abs(d)>=.5,ok=!far&&Math.abs(cents)<=tol;
+  n.textContent=noteName(TUNT!=null&&!far?TUNT:r.note);
+  c.textContent=far?(d>0?'Demasiado alto':'Demasiado bajo'):(ok?'Afinado':(cents>0?'+':'')+cents+' cents');
+  x.style.opacity=1;x.style.left=(50+cl)+'%';x.classList.toggle('ok',ok);
+  tunHold(ok,r.t);
 }
+/* «Afinar una nota»: mantener la nota en verde 2,5 s cuenta como conseguida */
+const HOLD_MS=2500,TUNH={tgt:null,key:'',ms:0,last:0,okAt:0,done:false,n:0};
+function holdHTML(){const p=Math.min(1,TUNH.ms/HOLD_MS);
+  return '<div class="thold'+(TUNH.done?' done':'')+'"><i id="tnH" style="width:'+(p*100).toFixed(1)+'%"></i></div><p class="fn l2" id="tnHt" style="margin-top:8px">'+holdTxt()+'</p>'}
+function holdTxt(){
+  if(TUNH.done)return '<b class="ink">¡Conseguido!</b> Prueba con «Otra nota»'+(TUNH.n>1?' · '+TUNH.n+' notas':'');
+  if(TUNH.ms>0)return 'Mantén… '+Math.max(.1,(HOLD_MS-TUNH.ms)/1000).toFixed(1).replace('.',',')+' s';
+  return 'Mantén la nota en verde 2,5 s';
+}
+function holdReset(tgt,all){TUNH.tgt=tgt;TUNH.ms=0;TUNH.last=0;TUNH.okAt=0;TUNH.done=false;if(all)TUNH.n=0}
+function tunHold(ok,t){
+  const b=$('tnH'),tx=$('tnHt');if(!b||TUNH.done)return;
+  const now=t||performance.now();
+  if(ok){if(TUNH.last)TUNH.ms+=Math.min(150,now-TUNH.last);TUNH.last=now;TUNH.okAt=now;
+    if(TUNH.ms>=HOLD_MS){TUNH.ms=HOLD_MS;TUNH.done=true;TUNH.n++;try{navigator.vibrate&&navigator.vibrate(30)}catch(e){}b.parentNode.classList.add('done')}}
+  else{TUNH.last=0;if(TUNH.ms&&now-TUNH.okAt>250)TUNH.ms=0}   // un parpadeo corto no rompe la cuenta
+  b.style.width=(Math.min(1,TUNH.ms/HOLD_MS)*100).toFixed(1)+'%';tx.innerHTML=holdTxt();
+}
+function openTunTol(push){
+  const prev=onSheetClose;
+  openSheet(()=>{const k=tunTolKey(),own=!!(DB.cfg.tun&&TUN_TOL[DB.cfg.tun.tol]);
+    return{title:'Margen de «Afinado»',body:'<div class="pad stack">'+
+      '<p class="sb l2 center" style="padding:0 10px">Cuánto te puedes separar de la nota para que el afinador diga «Afinado» y se ponga en verde.</p>'+
+      Object.keys(TUN_TOL).map(o=>optBtn(TUN_TOL[o],k===o,"setTunTol('"+o+"')")).join('')+
+      '<p class="fn l2" style="padding:0 16px">'+(own?'Elegido por ti.':'Elegido según tu experiencia: '+(LEVELS[(DB.profile||{}).lvl]||LEVELS.ini).n.toLowerCase()+'.')+' La aguja muestra la media de un tercio de segundo, así el vibrato no la hace saltar.</p></div>'}},push);
+  onSheetClose=()=>{onSheetClose=prev;
+    /* si se cierra todo (no «Atrás»), se cierra también lo de debajo (el afinador suelta el micro) */
+    setTimeout(()=>{if(!$('sheet').classList.contains('on')&&onSheetClose===prev&&prev){onSheetClose=null;prev()}},0)};
+}
+function setTunTol(k){DB.cfg.tun=Object.assign({},DB.cfg.tun,{tol:k});save();drawSheet()}
 async function tunerGo(){
   try{await tunerStart((r)=>tunerUpdate(r))}catch(e){toast(e&&e.message==='insecure'?'Abre Neiro desde su dirección web para usar el micro':'No se pudo abrir el micrófono');return false}
   return true;
 }
 function openTuner(push){
   TUNT=null;
-  openSheet(()=>({title:'Afinador',body:'<div class="pad stack">'+tunerHTML(null)+'<p class="fn l2 center" style="padding:0 16px">Canta una nota mantenida. La aguja en el centro y en verde: afinado.</p>'+
+  openSheet(()=>({title:'Afinador',body:'<div class="pad stack">'+tunerHTML(null)+'<p class="fn l2 center" style="padding:0 16px">Canta una nota mantenida. En la franja lima: afinado.<br>Margen: '+tunTolTxt()+' · <button class="link" onclick="openTunTol(true)">Cambiar</button></p>'+
     '<div class="row" style="gap:8px"><button class="btn sec grow" onclick="tone(startTonic({pat:[0]}),1.6)">'+ic('keys',18)+'Nota de referencia</button></div></div>'}),push);
   onSheetClose=()=>{tunerStop();TUNT=null};
   tunerGo();
@@ -713,6 +756,7 @@ function meSheet(){
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Práctica</p><div class="group">'+
       row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row(goalsOf(p).length>1?'Objetivos':'Objetivo',goalsOf(p).length?(goalsOf(p).length>1?goalsOf(p).length+' elegidos':GOALS[goalsOf(p)[0]].n):'—','openGoals()')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+row('Vista',PNO_VIEW[pianoCfg().view].n,'openPiano()')+'</div></div>'+
+    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Afinador</p><div class="group">'+row('Margen de «Afinado»',TUN_TOL[tunTolKey()].n+' · ±'+tunTol(),'openTunTol(true)')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Clases</p><div class="group">'+
       '<button class="cell" onclick="setTeacher(!DB.profile.teacher,true);openSheet(meSheet,true,true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Voy a clase</span><span class="sw'+(p.teacher?' on':'')+'" role="switch" aria-checked="'+!!p.teacher+'"></span></div></button>'+
       (p.teacher?row('Día de clase',p.classDay!=null?DIAS[p.classDay]:'—','openClassDay(true)'):'')+'</div></div>'+
@@ -1121,7 +1165,7 @@ function renderSession(){
     body='<p class="sb l2" style="margin-top:10px">'+esc(e.how)+'</p><div class="card" style="margin-top:18px;padding:18px;text-align:center"><p class="fn l2">'+(DB.best[s.ex]?'Tu marca: '+DB.best[s.ex]+' s':'Primera vez: apunta tu marca')+'</p><p class="big rnd" id="ssHold">'+(SS.holdOn?holdSec():0)+' s</p>'+
       '<button class="btn '+(SS.holdOn?'inv':'pri')+'" style="margin-top:10px" onclick="holdToggle()">'+(SS.holdOn?ic('stop',20)+'Parar':ic('play',18)+'Empezar el siseo')+'</button></div><div style="display:flex;justify-content:center;margin-top:16px">'+miniTimer()+'</div>';
   }else if(e&&e.mode==='tuner'){
-    const tgt=startTonic({pat:[0]})+(SS.tgtOff||0);TUNT=tgt;
+    const tgt=startTonic({pat:[0]})+(SS.tgtOff||0);TUNT=tgt;{const k=SS.t0+':'+SS.i;if(TUNH.tgt!==tgt||TUNH.key!==k)holdReset(tgt,TUNH.key!==k);TUNH.key=k}
     body='<p class="sb l2" style="margin-top:10px">'+esc(e.how)+'</p><div style="margin-top:16px">'+tunerHTML(tgt)+'</div>'+
       '<div class="row" style="gap:8px;margin-top:12px"><button class="btn sec grow" style="height:46px" onclick="tone('+tgt+',1.8)">'+ic('keys',18)+'Escuchar '+noteName(tgt)+'</button><button class="btn sec" style="width:auto;padding:0 14px;height:46px" onclick="SS.tgtOff=((SS.tgtOff||0)+[2,2,1,2,2,2,1][(SS.tgtN=(SS.tgtN||0)+1)%7])%12;renderSession()">Otra nota</button></div>'+
       (TUN.on?'':'<button class="btn pri" style="margin-top:8px" onclick="if(!SS.run)togglePause();tunerGo().then(ok=>{if(ok)renderSession()})">'+ic('mic',18)+'Activar el afinador</button>')+

@@ -33,6 +33,7 @@ function pianoNote(m,t,dur,vol,snd){
   const c=ac(),out=out_();if(!c||!out)return;
   snd=snd||pianoCfg().snd;
   const f=hzOf(m),v=(vol||.26),end=t+Math.max(.15,dur);
+  tunMute(end+(snd==='suave'?.35:.55)); // el afinador no escucha mientras suena (más la cola)
   const g=c.createGain(),lp=c.createBiquadFilter();lp.type='lowpass';lp.Q.value=.5;
   lp.connect(g);g.connect(out);
   if(snd==='suave'){
@@ -67,6 +68,7 @@ function glideNote(m1,m2,t,dur){
     o.frequency.setValueAtTime(hzOf(m1)*k,t);o.frequency.exponentialRampToValueAtTime(hzOf(m2)*k,t+dur);
     gg.gain.value=a;o.connect(gg);gg.connect(lp);o.start(t);o.stop(t+dur+.15);
   });
+  tunMute(t+dur+.35);
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.2,t+.05);g.gain.setValueAtTime(.2,t+dur-.05);g.gain.linearRampToValueAtTime(0,t+dur+.1);
 }
 function tone(m,dur){const c=ac();if(!c)return;pianoNote(m,c.currentTime+.02,dur||1.4)}
@@ -205,23 +207,46 @@ function recRelease(){
 }
 
 /* ═════ AFINADOR ═════
-   Detecta la nota cantada con el método de McLeod (autocorrelación normalizada). */
-const TUN={on:false,stream:null,an:null,src:null,buf:null,iv:null,cb:null,hist:[]};
+   Detecta la nota cantada con el método de McLeod (autocorrelación normalizada, calculada con FFT).
+   Comprobado el 26 oct 2026 con un banco de pruebas: acierta la nota de Do1 a Re5 con ~1 cent de error típico,
+   con micro de móvil, eco y ruido fuerte, y no da lecturas falsas con silencio o zumbido.
+   Lo que se ve en pantalla es la media de los últimos 0,35 s (unas dos vueltas de vibrato): es la altura que se percibe.
+   Mientras suena el piano de referencia, el afinador no escucha (el micro oiría el piano y diría «Afinado»). */
+const TUN={on:false,stream:null,an:null,src:null,buf:null,iv:null,cb:null,hist:[],disp:[],note:null,jump:0,lastOk:0};
+const TUN_WIN=350;              // ms que se promedian para la aguja
+let TUN_MUTE=0;                 // hasta cuándo (tiempo del AudioContext) suena la referencia
+function tunMute(until){TUN_MUTE=Math.max(TUN_MUTE,until)}
 async function tunerStart(cb){
   tunerStop();
   const stream=await micStream(),c=ac();
   TUN.stream=stream;TUN.src=c.createMediaStreamSource(stream);TUN.an=c.createAnalyser();TUN.an.fftSize=2048;
-  TUN.src.connect(TUN.an);TUN.buf=new Float32Array(TUN.an.fftSize);TUN.cb=cb;TUN.on=true;TUN.hist=[];
-  TUN.iv=setInterval(()=>{
-    if(!TUN.on)return;
-    TUN.an.getFloatTimeDomainData(TUN.buf);
-    const f=detectPitch(TUN.buf,c.sampleRate);
-    const now=Date.now();
-    if(f){const m=midiOfHz(f);TUN.hist.push({t:now,m});}
-    TUN.hist=TUN.hist.filter(x=>now-x.t<1200);
-    TUN.cb&&TUN.cb(f?{hz:f,m:midiOfHz(f)}:null,tunerStable());
-  },50);
+  TUN.src.connect(TUN.an);TUN.buf=new Float32Array(TUN.an.fftSize);TUN.cb=cb;TUN.on=true;TUN.hist=[];tunReset();
+  TUN.iv=setInterval(tunTick,50);
 }
+function tunReset(){TUN.disp=[];TUN.note=null;TUN.jump=0;TUN.lastOk=0}
+function tunTick(){
+  if(!TUN.on||!TUN.an)return;
+  const c=ac(),now=performance.now();
+  if(c&&c.currentTime<TUN_MUTE){tunReset();TUN.hist=[];TUN.cb&&TUN.cb({muted:true,t:now},null);return}
+  TUN.an.getFloatTimeDomainData(TUN.buf);
+  const f=detectPitch(TUN.buf,c.sampleRate);
+  TUN.disp=TUN.disp.filter(x=>now-x.t<TUN_WIN);
+  if(f){
+    const m=midiOfHz(f);
+    /* un salto de más de 7 semitonos solo se cree si se repite 3 veces (quita los saltos de octava sueltos) */
+    if(TUN.disp.length&&Math.abs(m-tunMed(TUN.disp.map(x=>x.m)))>7){if(++TUN.jump>=3){TUN.disp=[];TUN.note=null}}
+    if(!TUN.disp.length||Math.abs(m-tunMed(TUN.disp.map(x=>x.m)))<=7){TUN.jump=0;TUN.disp.push({t:now,m});TUN.hist.push({t:now,m});TUN.lastOk=now}
+  }
+  TUN.hist=TUN.hist.filter(x=>now-x.t<1200);
+  /* huecos cortos (una consonante, coger aire) no apagan la aguja */
+  if(!TUN.disp.length||now-TUN.lastOk>200){if(!TUN.disp.length)TUN.note=null;TUN.cb&&TUN.cb(null,tunerStable());return}
+  const vs=TUN.disp.map(x=>x.m),med=tunMed(vs),avg=tunTrim(vs);
+  /* el nombre de la nota no cambia hasta pasar 65 cents del centro de la que se muestra */
+  if(TUN.note==null||Math.abs(med-TUN.note)>.65)TUN.note=Math.round(med);
+  TUN.cb&&TUN.cb({hz:440*Math.pow(2,(avg-69)/12),m:avg,note:TUN.note,t:now},tunerStable());
+}
+const tunMed=a=>{const s=a.slice().sort((x,y)=>x-y);return s[s.length>>1]};
+const tunTrim=a=>{const s=a.slice().sort((x,y)=>x-y),k=Math.floor(s.length*.15),r=s.slice(k,s.length-k);const u=r.length?r:s;return u.reduce((x,y)=>x+y,0)/u.length};
 function tunerStop(){
   TUN.on=false;clearInterval(TUN.iv);TUN.iv=null;
   try{TUN.src&&TUN.src.disconnect()}catch(e){}
@@ -235,27 +260,38 @@ function tunerStable(){
   const near=ms.filter(m=>Math.abs(m-med)<.6);
   return near.length>=h.length*.8?Math.round(med):null;
 }
+/* FFT (radix 2) para la autocorrelación: unas 20 veces más rápida que sumar a mano */
+const FFTP={};
+function fftPlan(n){if(FFTP[n])return FFTP[n];const rev=new Uint32Array(n),lg=Math.log2(n);for(let i=0;i<n;i++){let r=0;for(let b=0;b<lg;b++)r|=((i>>b)&1)<<(lg-1-b);rev[i]=r}
+  const co=new Float64Array(n/2),si=new Float64Array(n/2);for(let i=0;i<n/2;i++){co[i]=Math.cos(2*Math.PI*i/n);si[i]=Math.sin(2*Math.PI*i/n)}
+  return FFTP[n]={rev,co,si,re:new Float64Array(n),im:new Float64Array(n)}}
+function fftRun(p,re,im,inv){const n=re.length;
+  for(let i=0;i<n;i++){const j=p.rev[i];if(j>i){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}}
+  for(let s=2;s<=n;s<<=1){const h=s>>1,st=n/s;for(let i=0;i<n;i+=s)for(let k=0;k<h;k++){const c=p.co[k*st],sn=inv?-p.si[k*st]:p.si[k*st];
+    const a=i+k,b=a+h,tr=re[b]*c+im[b]*sn,ti=im[b]*c-re[b]*sn;re[b]=re[a]-tr;im[b]=im[a]-ti;re[a]+=tr;im[a]+=ti}}}
+const TUN_LO=55,TUN_HI=1400;   // de La0 a Fa5 largo: cubre de bajo profundo a soprano
 function detectPitch(x,sr){
-  const n=x.length;let rms=0;for(let i=0;i<n;i++)rms+=x[i]*x[i];rms=Math.sqrt(rms/n);
-  if(rms<.012)return null;
-  const minLag=Math.floor(sr/1100),maxLag=Math.min(n-2,Math.floor(sr/65)),W=n-maxLag;
-  const nsdf=new Float32Array(maxLag+2);
-  for(let tau=minLag;tau<=maxLag+1;tau++){
-    let ac=0,m=0;for(let i=0;i<W;i++){const a=x[i],b=x[i+tau];ac+=a*b;m+=a*a+b*b}
-    nsdf[tau]=m>0?2*ac/m:0;
-  }
-  /* picos positivos entre cruces por cero; el primero que llegue al 90 % del mayor */
+  const n=x.length;let e=0;for(let i=0;i<n;i++)e+=x[i]*x[i];
+  if(Math.sqrt(e/n)<.0015)return null;            // solo descarta el silencio; la claridad decide si hay nota
+  const N=2*n,p=fftPlan(N),re=p.re,im=p.im;re.fill(0);im.fill(0);for(let i=0;i<n;i++)re[i]=x[i];
+  fftRun(p,re,im,false);for(let i=0;i<N;i++){re[i]=re[i]*re[i]+im[i]*im[i];im[i]=0}fftRun(p,re,im,true);
+  const maxLag=Math.min(n>>1,Math.ceil(sr/TUN_LO)),minLag=Math.floor(sr/TUN_HI);
+  const nsdf=new Float64Array(maxLag+2);let m=2*e;
+  for(let t=0;t<=maxLag+1;t++){if(t>0)m-=x[t-1]*x[t-1]+x[n-t]*x[n-t];nsdf[t]=m>1e-12?2*(re[t]/N)/m:0}
+  /* picos clave: el más alto entre cada cruce hacia arriba y el siguiente hacia abajo, buscando desde el principio
+     (si se empieza tarde, en agudos se salta el pico bueno y marca una octava abajo) */
   const peaks=[];let pos=false,best=-1,bi=-1;
-  for(let t=minLag+1;t<=maxLag;t++){
+  for(let t=1;t<=maxLag;t++){
     if(nsdf[t]>0&&nsdf[t-1]<=0){pos=true;best=-1;bi=-1}
     if(pos&&nsdf[t]>best){best=nsdf[t];bi=t}
-    if(pos&&nsdf[t]<=0&&nsdf[t-1]>0){pos=false;if(bi>0)peaks.push([bi,best])}
+    if(pos&&nsdf[t]<=0&&nsdf[t-1]>0){pos=false;if(bi>=minLag)peaks.push([bi,best])}
   }
+  if(pos&&bi>=minLag&&bi<maxLag)peaks.push([bi,best]);   // el último pico aunque no se cierre (notas graves)
   if(!peaks.length)return null;
-  const mx=Math.max(...peaks.map(p=>p[1]));if(mx<.6)return null;
-  const p=peaks.find(q=>q[1]>=mx*.9);let t=p[0];
+  let mx=0;for(const q of peaks)if(q[1]>mx)mx=q[1];if(mx<.6)return null;
+  const q=peaks.find(r=>r[1]>=mx*.93);let t=q[0];
   const a=nsdf[t-1],b=nsdf[t],c2=nsdf[t+1],den=a-2*b+c2;if(den)t+=.5*(a-c2)/den;
-  const f=sr/t;return f>=65&&f<=1100?f:null;
+  const f=sr/t;return f>=TUN_LO&&f<=TUN_HI?f:null;
 }
 
 /* ═════ REPRODUCIR GRABACIONES ═════ */

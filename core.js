@@ -88,7 +88,7 @@ const EXC={
   belt:{n:'Belt corto',c:'tec',lv:2,pat:[0,2,4,2,0],bpm:110,
     how:'Cuatro emisiones cortas, potentes y apoyadas; después la escala dos veces con la misma colocación. Siempre con la voz caliente. Si notas picor o tensión, para y baja un tono.'},
   refnota:{n:'Afinar una nota',c:'oido',lv:0,mode:'tuner',
-    how:'Escucha la nota del piano y cántala con «a». El afinador te dice si vas alto o bajo. Mantén la aguja en el centro dos o tres segundos.'},
+    how:'Escucha la nota del piano y cántala con «a». El afinador te dice si vas alto o bajo. Mantén la nota en verde dos segundos y medio.'},
   intervalos:{n:'Terceras y quintas',c:'oido',lv:0,pat:[0,4,0,7,0],bpm:80,
     how:'Escucha el patrón una vez y después cántalo encima. Di el número de cada grado mientras lo cantas: conecta el sonido con su nombre.'},
   saltos:{n:'Escala y saltos',c:'oido',lv:1,pat:[0,4,7,9,7,4,0],bpm:96,
