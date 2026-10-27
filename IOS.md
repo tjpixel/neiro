@@ -23,3 +23,9 @@ La web de pruebas fija el diseño, los flujos y el formato de datos. En SwiftUI 
 - Confirmar que el nombre «Neiro» está libre (App Store y registro de marcas) antes de publicar.
 - Cuentas: misma cuenta que Tsuyo («familia Tsuyo») o separada.
 - Piano: sintetizado (ligero) o muestras grabadas (mejor sonido, más peso).
+
+## Micrófono (neiro-v17)
+- En la web, el micro se elige en Tú → Micrófono (`cfg.mic = {id, label}`); «Automático» deja que decida el móvil. Si el elegido no está, se usa el del móvil sin error.
+- En iPhone: `AVAudioSession` con categoría `.playAndRecord` y `setPreferredInput` para el micro elegido (`availableInputs`: integrado, auriculares de cable, bluetooth HFP, USB).
+- Con un micro bluetooth (HFP) los auriculares pasan a calidad de llamada también para lo que suena. Para cantar con AirPods y buena calidad: escuchar por bluetooth (A2DP, opción `.allowBluetoothA2DP`) y grabar con el micro integrado.
+- Abrir el micro sin procesar (modo `.measurement`): sin cancelación de eco, reducción de ruido ni control de volumen automático, como en la web.

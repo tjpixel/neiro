@@ -55,7 +55,7 @@ const daysTxt=av=>av.slice().sort((a,b)=>((a+6)%7)-((b+6)%7)).map(d=>WDL[d]).joi
 
 /* ═════ AVISOS Y PANTALLA ═════ */
 let tmo;
-function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tmo);tmo=setTimeout(()=>t.classList.remove('on'),2000)}
+function toast(m,ms){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tmo);tmo=setTimeout(()=>t.classList.remove('on'),ms||2000)}
 let WL=null;
 async function keepAwake(on){
   try{if(on&&'wakeLock' in navigator&&document.visibilityState==='visible'){if(!WL){WL=await navigator.wakeLock.request('screen');WL.addEventListener('release',()=>{WL=null})}}
@@ -706,6 +706,68 @@ function openTunTol(push){
     /* si se cierra todo (no «Atrás»), se cierra también lo de debajo (el afinador suelta el micro) */
     setTimeout(()=>{if(!$('sheet').classList.contains('on')&&onSheetClose===prev&&prev){onSheetClose=null;prev()}},0)};
 }
+/* ═════ MICRÓFONO ═════ */
+const MIC_S={phone:'Buena calidad. Con auriculares no oye el piano: lo mejor para practicar',
+  wired:'Buena calidad, cerca de la boca. En notas fuertes puede saturar un poco',
+  bt:'Calidad de llamada: tu voz y el piano suenan peor y con más retardo',
+  usb:'La mejor calidad, si tienes uno',other:''};
+const micRowTxt=()=>{const p=micPref();return p?micName({label:p.label}):'Automático'};
+const micNowTxt=()=>{const d=MIC.cur||(micPref()?{label:micPref().label}:null),k=d&&(d.kind||micKind(d.label));
+  return (!d?'Escucha por el micro que elija el móvil':k==='other'?'Escucha por: '+esc(d.label):'Escucha por el '+MIC_N[k].toLowerCase())+' · <button class="link" onclick="openMic(true)">Elegir</button>'};
+const MICT={list:null,stream:null,an:null,src:null,raf:0};
+function micTestStop(){cancelAnimationFrame(MICT.raf);try{MICT.src&&MICT.src.disconnect()}catch(e){}if(MICT.stream)MICT.stream.getTracks().forEach(t=>t.stop());MICT.stream=null;MICT.src=null;MICT.an=null}
+async function micTest(){
+  if(MICT.stream){micTestStop();drawSheet();return}
+  try{const st=await micStream();MICT.stream=st;
+    const c=ac();MICT.src=c.createMediaStreamSource(st);MICT.an=c.createAnalyser();MICT.an.fftSize=1024;MICT.src.connect(MICT.an);
+    const b=new Float32Array(MICT.an.fftSize);
+    const loop=()=>{if(!MICT.an)return;MICT.an.getFloatTimeDomainData(b);let pk=0;for(const v of b)pk=Math.max(pk,Math.abs(v));const l=$('micL');if(l)l.style.width=Math.min(100,pk*170).toFixed(0)+'%';MICT.raf=requestAnimationFrame(loop)};loop();
+  }catch(e){toast(e&&e.message==='insecure'?'Abre Neiro desde su dirección web para usar el micro':'No se pudo abrir el micrófono');return}
+  MICT.list=await micList();drawSheet();
+}
+function micSheet(){
+  const p=micPref(),L=MICT.list||[],named=L.some(d=>d.label),cur=MIC.cur,listening=TUN.on||!!VOZ.stream;
+  const dup=n=>L.filter(d=>micName(d)===n).length>1;
+  const phone=L.findIndex(d=>d.kind==='phone');
+  const bt=(cur&&cur.kind==='bt')||(p&&micKind(p.label)==='bt');
+  return{title:'Micrófono',body:'<div class="pad stack">'+
+    '<p class="sb l2 center" style="padding:0 10px">El micro con el que Neiro te escucha: afinador, «Tu voz encima», medir tu rango y grabar.</p>'+
+    '<div class="group"><div class="cell" style="min-height:64px"><span class="ic '+(cur?'tint':'gray')+'">'+ic('mic',17)+'</span><div class="cb"><div class="tt"><p class="bd">'+(cur?'Ahora: '+esc(micName(cur)):'Aún no ha escuchado')+'</p>'+
+      '<p class="fn l2 ell">'+(cur?(cur.missing?'El que elegiste no está conectado: usa el del móvil':(cur.label?esc(cur.label):'Sin nombre')):'Toca «Probar» para saber cuál usa')+'</p>'+
+      (MICT.stream?'<div class="lvl" style="margin:8px 0 2px;max-width:none"><i id="micL"></i></div>':'')+'</div></div></div></div>'+
+    (bt?'<div class="note">'+ic('ear',18)+'<span><b>Micro bluetooth.</b> Al usarlo, el móvil pone los auriculares en modo llamada: tu voz y el piano suenan peor. Puedes escuchar por los auriculares y cantar al micro del móvil.'+
+      (phone>=0&&!(p&&L[phone].id===p.id)?'<br><button class="link" style="margin-top:6px" onclick="setMic('+phone+')">Usar el micro del móvil</button>':'')+'</span></div>':'')+
+    '<p class="ghead" style="padding-left:16px;margin-top:6px">Usar</p>'+
+    optBtn({n:'Automático',s:'El que elija el móvil. Con auriculares suele ser el suyo'},!p,"setMic(-1)")+
+    L.map((d,i)=>{const n=micName(d);return optBtn({n,s:(dup(n)&&d.label?d.label+' · ':'')+(MIC_S[d.kind]||d.label)},!!p&&p.id===d.id,'setMic('+i+')')}).join('')+
+    (L.length&&!named?'<p class="fn l2" style="padding:0 16px">El navegador da los nombres de los micros cuando les das permiso: toca «Probar».</p>':'')+
+    (listening?'<p class="fn l2 center" style="padding:0 16px">Ya te está escuchando con este micro. Si eliges otro, cambia al momento.</p>'
+      :'<button class="btn sec" onclick="micTest()">'+ic(MICT.stream?'stop':'mic',18)+(MICT.stream?'Dejar de probar':'Probar el micro')+'</button>')+
+    '<p class="fn l2" style="padding:0 16px">Para cantar, lo más fiable: <b class="ink">auriculares de cable y el micro del móvil</b>. Sin auriculares, el micro oye el piano y Neiro lo tiene en cuenta.</p>'+
+    '</div>'};
+}
+function openMic(push){
+  const prev=onSheetClose;
+  MICT.list=null;openSheet(micSheet,push);
+  micList().then(L=>{MICT.list=L;if(SHS[SHS.length-1]===micSheet)drawSheet()});
+  onSheetClose=()=>{micTestStop();onSheetClose=prev;
+    setTimeout(()=>{if(!$('sheet').classList.contains('on')&&onSheetClose===prev&&prev){onSheetClose=null;prev()}},0)};
+}
+async function setMic(i){
+  const d=i>=0&&MICT.list?MICT.list[i]:null;
+  DB.cfg.mic=d?{id:d.id,label:d.label}:null;save();
+  VOZ.ear=null;VOZ.sig='';           // con otro micro hay que volver a comprobar si oye el piano
+  const testing=!!MICT.stream;if(testing)micTestStop();
+  if(TUN.on){try{await tunerStart(TUN.cb)}catch(e){}}
+  else if(VOZ.stream){vozClose();if(PAT.on&&vozWanted())vozStart()}
+  if(testing)await micTest();else drawSheet();
+  vozNote();
+}
+function micUI(){
+  document.querySelectorAll('[data-micnow]').forEach(x=>x.innerHTML=micNowTxt());
+  if(SHS[SHS.length-1]===micSheet&&$('sheet').classList.contains('on'))drawSheet();
+}
+function micWarn(){if(SHS[SHS.length-1]===micSheet)return;toast('Micro bluetooth: suena peor · Tú → Micrófono',4000)}
 function setTunTol(k){DB.cfg.tun=Object.assign({},DB.cfg.tun,{tol:k});save();drawSheet()}
 async function tunerGo(){
   try{await tunerStart((r)=>tunerUpdate(r))}catch(e){toast(e&&e.message==='insecure'?'Abre Neiro desde su dirección web para usar el micro':'No se pudo abrir el micrófono');return false}
@@ -713,7 +775,7 @@ async function tunerGo(){
 }
 function openTuner(push){
   TUNT=null;
-  openSheet(()=>({title:'Afinador',body:'<div class="pad stack">'+tunerHTML(null)+'<p class="fn l2 center" style="padding:0 16px">Canta una nota mantenida. En la franja lima: afinado.<br>Margen: '+tunTolTxt()+' · <button class="link" onclick="openTunTol(true)">Cambiar</button></p>'+
+  openSheet(()=>({title:'Afinador',body:'<div class="pad stack">'+tunerHTML(null)+'<p class="fn l2 center" style="padding:0 16px">Canta una nota mantenida. En la franja lima: afinado.<br>Margen: '+tunTolTxt()+' · <button class="link" onclick="openTunTol(true)">Cambiar</button><br><span data-micnow>'+micNowTxt()+'</span></p>'+
     '<div class="row" style="gap:8px"><button class="btn sec grow" onclick="tone(startTonic({pat:[0]}),1.6)">'+ic('keys',18)+'Nota de referencia</button></div></div>'}),push);
   onSheetClose=()=>{tunerStop();TUNT=null};
   tunerGo();
@@ -794,7 +856,7 @@ function meSheet(){
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Práctica</p><div class="group">'+
       row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row(goalsOf(p).length>1?'Objetivos':'Objetivo',goalsOf(p).length?(goalsOf(p).length>1?goalsOf(p).length+' elegidos':GOALS[goalsOf(p)[0]].n):'—','openGoals()')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+row('Vista',PNO_VIEW[pianoCfg().view].n,'openPiano()')+row('Tu voz encima',pianoCfg().voz?'Sí':'No','openPiano()')+'</div></div>'+
-    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Afinador</p><div class="group">'+row('Margen de «Afinado»',TUN_TOL[tunTolKey()].n+' · ±'+tunTol(),'openTunTol(true)')+'</div></div>'+
+    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Micrófono y afinador</p><div class="group">'+row('Micrófono',micRowTxt(),'openMic(true)')+row('Margen de «Afinado»',TUN_TOL[tunTolKey()].n+' · ±'+tunTol(),'openTunTol(true)')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Clases</p><div class="group">'+
       '<button class="cell" onclick="setTeacher(!DB.profile.teacher,true);openSheet(meSheet,true,true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Voy a clase</span><span class="sw'+(p.teacher?' on':'')+'" role="switch" aria-checked="'+!!p.teacher+'"></span></div></button>'+
       (p.teacher?row('Día de clase',p.classDay!=null?DIAS[p.classDay]:'—','openClassDay(true)'):'')+'</div></div>'+

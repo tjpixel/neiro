@@ -184,9 +184,61 @@ function recType(){
   return '';
 }
 const recSupported=()=>recType()!==null&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+/* ═════ MICRÓFONO ═════
+   Todo lo que escucha (afinador, «Tu voz encima», medir el rango, grabar) abre el micro aquí.
+   Por defecto, el que elige el móvil. En Tú → Micrófono se puede fijar uno (se guarda en cfg.mic = {id, label}).
+   Si el elegido no está (auriculares desconectados), se usa el del móvil por defecto sin dar error.
+   Con un micro bluetooth el móvil pasa los auriculares a «modo llamada»: voz y piano con calidad de teléfono. */
+const MIC={cur:null,warned:false};
+const MIC_RAW={echoCancellation:false,noiseSuppression:false,autoGainControl:false};
+function micKind(label){
+  const l=(label||'').toLowerCase();
+  if(/bluetooth|airpods|buds|hands-?free|\bbt\b|sco\b|manos libres/.test(l))return 'bt';
+  if(/usb|external|externo|lavalier|rode|shure|blue yeti|irig/.test(l))return 'usb';
+  if(/headset|headphone|auricular|wired|cable|earpiece|jack|line/.test(l))return 'wired';
+  if(/speakerphone|built-?in|internal|integrad|interno|phone|bottom|top|back|front|micr[oó]fono$|^microphone$/.test(l))return 'phone';
+  return l?'other':'phone';
+}
+const MIC_N={phone:'Micro del móvil',wired:'Micro de los auriculares',bt:'Micro de los auriculares bluetooth',usb:'Micro externo',other:'Micro'};
+function micName(d){const k=d.kind||micKind(d.label);return k==='other'?(d.label||MIC_N.other):MIC_N[k]}
+const micPref=()=>{const m=typeof DB!=='undefined'&&DB.cfg&&DB.cfg.mic;return m&&m.id?m:null};
+/* lista de micros (los nombres solo llegan después de dar permiso al micro) */
+async function micList(){
+  try{
+    const all=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+    const seen=new Set(),out=[];
+    for(const d of all){
+      if(d.deviceId==='default'||d.deviceId==='communications'||!d.deviceId)continue;   // alias del sistema
+      const label=(d.label||'').replace(/^(Default|Predeterminado|Communications) - /i,'');
+      if(seen.has(label+d.groupId))continue;seen.add(label+d.groupId);
+      out.push({id:d.deviceId,label,kind:micKind(label)});
+    }
+    return out;
+  }catch(e){return []}
+}
 async function micStream(){
   if(!window.isSecureContext||!navigator.mediaDevices)throw new Error('insecure');
-  return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  const p=micPref();let stream=null;
+  if(p){
+    let id=p.id;
+    /* el identificador puede cambiar (datos del navegador borrados): se busca también por nombre */
+    try{const L=await micList();if(L.length&&!L.some(d=>d.id===id)){const m=L.find(d=>d.label&&d.label===p.label);if(m)id=m.id}}catch(e){}
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:Object.assign({deviceId:{exact:id}},MIC_RAW)})}
+    catch(e){if(e&&e.name==='NotAllowedError')throw e;stream=null}
+  }
+  if(!stream)stream=await navigator.mediaDevices.getUserMedia({audio:MIC_RAW});
+  micNote(stream,p);
+  return stream;
+}
+/* apunta qué micro se ha abierto de verdad y avisa una vez si es bluetooth */
+function micNote(stream,p){
+  try{
+    const t=stream.getAudioTracks()[0],s=t.getSettings?t.getSettings():{};
+    const label=t.label||'',kind=micKind(label);
+    MIC.cur={id:s.deviceId||'',label,kind,chosen:!!(p&&(s.deviceId===p.id||label===p.label)),missing:!!(p&&s.deviceId!==p.id&&label!==p.label)};
+  }catch(e){MIC.cur=null}
+  if(MIC.cur&&MIC.cur.kind==='bt'&&!MIC.warned&&typeof micWarn==='function'){MIC.warned=true;setTimeout(micWarn,300)}
+  if(typeof micUI==='function')micUI();
 }
 async function recStart(bitrate,onStop,onLevel){
   const stream=await micStream(),t=recType();
