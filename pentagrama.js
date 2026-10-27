@@ -4,7 +4,7 @@
    En iOS será otra vista de SwiftUI (Canvas) con el mismo cálculo de posiciones. */
 'use strict';
 
-const PG={W:360,H:82,X0:44,TOP:14,SP:8};
+const PG={W:360,H:82,X0:40,TOP:14,SP:8};
 /* paso en el pentagrama (Do4 = 0, Re4 = 1…) y alteración de una nota escrita en semitonos desde el Do */
 const PG_PC=[[0,''],[0,'#'],[1,''],[1,'#'],[2,''],[3,''],[3,'#'],[4,''],[4,'#'],[5,''],[6,'b'],[6,'']];
 function pgStep(k){const o=Math.floor(k/12),p=PG_PC[((k%12)+12)%12];return{st:p[0]+7*o,acc:p[1]}}

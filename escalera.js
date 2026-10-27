@@ -75,10 +75,11 @@ function gdMake(id,e){
 function gdBuild(el,id,e){el._pgsig=undefined;const g=gdMake(id,e);el.innerHTML=g.html;el._st=g.st;gdParts(el,e,g.pl)}
 
 /* ── escalera (vertical) ── */
-const GW=360,GROW=9,GKX=30,GKW=18,GGX=GKX+GKW+12,GCW=22;
+/* teclado pegado a la izquierda, con el nombre de cada Do dentro de su tecla: deja más sitio a la escalera y al pentagrama */
+const GW=360,GROW=9,GKX=1,GKW=24,GGX=GKX+GKW+8,GCW=20;
 /* forma de una vuelta en coordenadas de la tónica (y = 0 es la fila de la tónica) */
 function escShapes(pl){
-  const PX=GGX+GCW+(pl.pre?30:12),PW=GW-PX-6,xs=t=>PX+t/pl.D*PW,sh=[];
+  const PX=GGX+GCW+(pl.pre?25:10),PW=GW-PX-6,xs=t=>PX+t/pl.D*PW,sh=[];
   if(!pl.nochord)[0,4,7].forEach(k=>sh.push({i:'c',x:GGX,w:GCW,k}));
   if(pl.pre)sh.push({i:'p',x:GGX+GCW+8,w:14,k:pl.pre.k});
   if(pl.glide)pl.it.forEach((it,j)=>sh.push({i:String(j),seg:1,x0:xs(it.t)+(j===0?5:0),x1:xs(it.t+it.d)-(j===pl.it.length-1?5:0),k0:it.k0,k1:it.k1}));
@@ -120,9 +121,9 @@ function escHTML(e,tonic,w,pl,n,vz){
       wk+='<rect data-k="'+m+'" x="'+GKX+'" y="'+y+'" width="'+GKW+'" height="'+GROW+'" fill="var(--kw)" opacity="'+op+'"/>';
       if(!isBlk(m-1)&&m>w.a)sp+='<line x1="'+GKX+'" x2="'+(GKX+GKW)+'" y1="'+(y+GROW)+'" y2="'+(y+GROW)+'" stroke="var(--kedge)" stroke-width=".6" opacity="'+op+'"/>';
     }
-    if(pc12(m)===0)lb+='<text class="gklab" x="'+(GKX-5)+'" y="'+(y+GROW-1.5)+'">'+noteName(m)+'</text>';
+    if(pc12(m)===0)lb+='<text class="gklab" x="'+(GKX+GKW-2)+'" y="'+(y+GROW-1.8)+'" opacity="'+op+'">'+noteName(m)+'</text>';
   }
-  s+=lb+wk+bk+sp+'<rect x="'+GKX+'" y="0" width="'+GKW+'" height="'+H+'" rx="2" fill="none" stroke="var(--kedge)" stroke-width=".8"/>';
+  s+=wk+bk+sp+lb+'<rect x="'+GKX+'" y="0" width="'+GKW+'" height="'+H+'" rx="2" fill="none" stroke="var(--kedge)" stroke-width=".8"/>';
   /* la escalera: base gris, capa encendida (recortada hasta lo que ya ha sonado) y grados encima de cada nota */
   let lab='';
   if(pl.glide){
