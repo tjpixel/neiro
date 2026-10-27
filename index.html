@@ -332,6 +332,18 @@ body.locked{position:fixed;left:0;right:0;overflow:hidden}
 /* ── reproductor con guía: escalera (vertical) o teclado (horizontal) ── */
 .pcard{border-radius:24px;background:var(--bg2);padding:12px 10px 10px;display:flex;flex-direction:column;gap:10px}
 .pcard>.player{background:none;border-radius:0;padding:10px 0 0;border-top:.5px solid var(--sep)}
+/* aviso de «Tu voz»: sale arriba solo cuando hay algo que decir */
+.vpill{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 64px);transform:translate(-50%,-12px);opacity:0;pointer-events:none;z-index:95;
+  display:flex;align-items:center;gap:8px;width:max-content;max-width:calc(100% - 32px);padding:9px 14px;border-radius:20px;transition:opacity .2s,transform .2s}
+.vpill.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.vpill i{width:14px;height:3px;border-radius:2px;background:var(--g-voz-dot);flex-shrink:0}
+.vpill .link{color:var(--g-voz-ink);white-space:nowrap}
+/* reproductor compacto */
+.player{gap:10px}
+.playbtn{width:44px;height:44px}
+.player .mini{width:36px;height:36px}
+.pcard>.player{padding:8px 0 0}
+.player .hl{font-size:16px;line-height:20px}
 /* práctica con piano y guía: cabe en una pantalla */
 .fullin.cmp .sstt{font-size:26px;line-height:31px}
 .foot.cmp{padding-top:12px;gap:6px}
@@ -385,7 +397,7 @@ b.up::before{top:-6px}b.lo::after{bottom:-6px}
 .cxsm{height:44px;font-size:15px}
 .cxvel button{text-align:center}
 /* pentagrama de los ejercicios propios */
-.gpg{padding:6px 2px 0;border-top:.5px solid var(--sep);margin-top:2px}
+.gpg{padding:6px 0 0;border-top:.5px solid var(--sep);margin-top:2px}
 .gstaff{width:100%;height:auto;display:block;color:var(--label)}
 .pgl{stroke:var(--label2);stroke-width:.8}.pgl.b{stroke-width:1}
 .pgfill{fill:var(--label)}
@@ -396,7 +408,8 @@ b.up::before{top:-6px}b.lo::after{bottom:-6px}
 .pgts{font:700 19px Georgia,"Times New Roman",serif;fill:var(--label);text-anchor:middle}
 .pglab{font:600 10.5px "DM Sans",-apple-system,system-ui,sans-serif;fill:var(--label2)}.pgof{fill:var(--label3);font-weight:500}
 .pgclef{color:var(--label)}
-.pgcur{fill:var(--tint-soft);transition:opacity .15s}
+.pgbt{fill:var(--label3)}.pgbt.m{fill:var(--label2)}
+.pgbt.now{fill:var(--ink);transform-box:fill-box;transform-origin:bottom;transform:scaleY(1.7)}
 .pgn.now .pgf{fill:var(--ink)}.pgn.now .pgh{stroke:var(--ink);stroke-width:2.2}.pgn.now .pgst,.pgn.now .pgflag{stroke:var(--ink)}
 .guide{display:flex;flex-direction:column;gap:8px}
 .ghd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 4px}

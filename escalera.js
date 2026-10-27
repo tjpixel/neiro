@@ -64,14 +64,15 @@ function guideHTML(id){
 function gdMake(id,e){
   const v=gView(),tonic=gdTonic(id,e),pl=gdPlan(id,e),w=gdWin(e,tonic,v),inf=gdInfo(e,tonic,id);
   const vz=pianoCfg().voz?1:0;
-  const html='<div class="ghd"><span class="pill '+inf.c+'" data-g="pill">'+inf.t+'</span><div class="gtop"><p class="c1 l2">Más aguda</p><p class="fn semi num" data-g="top">'+inf.top+'</p></div></div>'+
+  /* en lectura seguida no hay cabecera: ni sentido ni nota más aguda (el tono no se mueve) */
+  const html=(exLee(e)?'':'<div class="ghd"><span class="pill '+inf.c+'" data-g="pill">'+inf.t+'</span><div class="gtop"><p class="c1 l2">Más aguda</p><p class="fn semi num" data-g="top">'+inf.top+'</p></div></div>')+
     (v==='tec'?tecHTML(e,tonic,w,pl,vz):escHTML(e,tonic,w,pl,++GD_N,vz))+
-    (vz?'<div class="gvoz"><i></i><span class="fn semi">Tu voz</span><span class="fn semi num vn" data-g="vozn"></span><span class="fn l2 vs" data-g="vozs"></span></div>':'')+
+
     (e.seq&&e.seq.length?'<div class="gpg" data-g="staff"></div>':'');
   return{html,pl,st:{v,t:tonic,a:w.a,b:w.b,full:w.full,sig:plSig(pl),top:patTop(e),vz}};
 }
 /* rehace la guía en su sitio */
-function gdBuild(el,id,e){el._pgli=undefined;const g=gdMake(id,e);el.innerHTML=g.html;el._st=g.st;gdParts(el,e,g.pl)}
+function gdBuild(el,id,e){el._pgsig=undefined;const g=gdMake(id,e);el.innerHTML=g.html;el._st=g.st;gdParts(el,e,g.pl)}
 
 /* ── escalera (vertical) ── */
 const GW=360,GROW=9,GKX=30,GKW=18,GGX=GKX+GKW+12,GCW=22;
@@ -228,8 +229,8 @@ function gdTick(el){
     const sv=el.querySelector('svg[role="img"]');if(sv)sv.setAttribute('aria-label',gdAria(e,tonic));
   }
   const inf=gdInfo(e,tonic,id);
-  gdSet(el,'pill',inf.c+inf.t,()=>{P.pill.className='pill '+inf.c;P.pill.textContent=inf.t});
-  gdSet(el,'top',inf.top,x=>P.top.textContent=x);
+  if(P.pill)gdSet(el,'pill',inf.c+inf.t,()=>{P.pill.className='pill '+inf.c;P.pill.textContent=inf.t});
+  if(P.top)gdSet(el,'top',inf.top,x=>P.top.textContent=x);
   /* lo que suena ahora, descontando el retardo del altavoz o de los auriculares */
   const R=gdPlaying(id)?PAT.round:null,c=AC;
   const snd=R&&c?gdSound(R,c.currentTime-Math.min(.5,(c.outputLatency||0)+(c.baseLatency||0))):{cur:null,keys:[]};
@@ -257,7 +258,7 @@ function gdTick(el){
     gdSet(el,'chip',ci,()=>P.chips.forEach((x,j)=>{x.classList.toggle('now',j===ci);x.classList.toggle('done',ci>=0&&j<ci)}));
   }
   if(st.vz)gdVoz(el,v,R);
-  if(e.seq&&e.seq.length)pgTick(el,e,R,snd);
+  if(e.seq&&e.seq.length)pgTick(el,e,R,snd,pl);
 }
 
 /* ═════ TU VOZ ENCIMA ═════
@@ -291,19 +292,33 @@ function tecXc(K,m){
   const c=k=>K.x[k]==null?null:(isBlk(k)?K.x[k]:K.x[k]+K.kw/2),a=Math.floor(m),f=m-a,x0=c(a),x1=c(a+1);
   if(x0==null||x1==null)return null;return x0+(x1-x0)*f;
 }
-function vozTxt(cur){
-  const chk='<button class="link" onclick="vozRetry()">Comprobar</button>';
-  if(VOZ.st==='check')return 'Comprobando el micro · no cantes un momento';
-  if(VOZ.st==='nomic')return 'Sin acceso al micro';
-  if(VOZ.ear==='bleed')return 'El micro oye el altavoz: ponte auriculares · '+chk;
-  if(!PAT.on)return 'Aparece al tocar el piano';
-  if(VOZ.ear==null)return 'Cambió el sonido · '+chk;
-  return cur?'':'Canta encima';
+/* ═════ AVISO DE «TU VOZ» ═════
+   Solo cuando hay algo que decir: una píldora arriba que sale, avisa y se va (no una leyenda fija bajo la guía).
+   «Comprobando…» se queda mientras dura la comprobación; los demás avisos se van solos a los 6 s. */
+function vozState(){
+  if(VOZ.st==='check')return 'check';
+  if(VOZ.st==='nomic')return 'nomic';
+  if(!PAT.on)return '';
+  if(VOZ.ear==='bleed')return 'bleed';
+  if(VOZ.ear==null)return 'chg';
+  return '';
+}
+const VOZ_MSG={check:'Comprobando el micro · no cantes un momento',nomic:'Sin acceso al micro',bleed:'El micro oye el altavoz: ponte auriculares',chg:'Cambió el sonido'};
+const VN={k:'',tm:null};
+function vozNotice(k){
+  if(VN.k===k)return;VN.k=k;
+  let el=document.getElementById('vozPill');
+  if(!el){el=document.createElement('div');el.id='vozPill';el.className='vpill glass';el.setAttribute('role','status');document.body.appendChild(el)}
+  clearTimeout(VN.tm);
+  if(!k){el.classList.remove('on');return}
+  const act=k==='bleed'||k==='chg';
+  el.innerHTML='<i></i><span class="fn semi">'+VOZ_MSG[k]+'</span>'+(act?'<button class="fn semi link" onclick="vozRetry()">Comprobar</button>':'');
+  el.classList.add('on');
+  VN.tm=setTimeout(()=>el.classList.remove('on'),k==='check'?8000:6000);
 }
 function gdVoz(el,v,R){
   const P=el._p,st=el._st,wall=performance.now(),cur=VOZ.cur&&wall-VOZ.cur.at<220?VOZ.cur:null;
-  gdSet(el,'vozs',vozTxt(cur),x=>{if(P.vozs)P.vozs.innerHTML=x});
-  gdSet(el,'vozn',cur?noteName(Math.round(cur.m)):'',x=>{if(P.vozn)P.vozn.textContent=x});
+  vozNotice(vozState());
   if(v==='esc'){
     if(!P.voz)return;
     const yv=m=>(st.b-m)*GROW+GROW/2;
