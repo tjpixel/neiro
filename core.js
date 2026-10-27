@@ -100,19 +100,37 @@ const exBase=id=>EXC[id]||(DB.cex||{})[id]||null;
 /* ═════ NOTAS DE UN EJERCICIO PROPIO ═════
    seq: [[k, t], …] tal cual está en la hoja. k = semitonos desde el Do de la hoja (null = silencio); t = tiempos (½ corchea, 1 negra, 2 blanca, 4 redonda).
    De ahí sale lo que lee el piano y la guía: pat (solo las notas), dur (tiempos de cada nota), gap (silencio detrás) y lead (silencio antes de la primera). */
-const SEQ_T=[.5,1,1.5,2,3,4],SEQ_LO=-7,SEQ_HI=24,SEQ_MAX=96;
+const SEQ_T=[.5,1,1.5,2,3,4],SEQ_LO=-7,SEQ_HI=24,SEQ_MAX=256;
 function seqClean(q){
   if(!Array.isArray(q))return [];
   return q.slice(0,SEQ_MAX).map(x=>Array.isArray(x)?x:[]).map(([k,t])=>[k==null||k===''?null:Math.round(+k),SEQ_T.includes(+t)?+t:1])
     .filter(([k])=>k===null||(Number.isFinite(k)&&k>=SEQ_LO&&k<=SEQ_HI));
 }
-function seqApply(o){
-  const q=seqClean(o.seq),pat=[],dur=[],gap=[];let lead=0;
+/* modo: 'sube' (medio tono más arriba cada vuelta, como los del catálogo) · 'lee' (lectura seguida: tono fijo, línea tras línea sin parar)
+   En «lee» el ejercicio se parte en líneas de 4 compases de 4/4 (16 tiempos), como en la hoja; lab = nombre de cada línea (por ejemplo, el número de la hoja). */
+const SEQ_LINE=16;
+function seqParts(q){
+  const pat=[],dur=[],gap=[];let lead=0;
   q.forEach(([k,t])=>{if(k===null){if(pat.length)gap[pat.length-1]+=t;else lead+=t}else{pat.push(k);dur.push(t);gap.push(0)}});
-  o.seq=q;delete o.pat;delete o.dur;delete o.gap;delete o.lead;
-  if(pat.length){o.pat=pat;o.dur=dur;o.gap=gap;if(lead)o.lead=lead;o.bpm=[72,92,112].includes(+o.bpm)?+o.bpm:92}
+  return{pat,dur,gap,lead};
+}
+function seqLinesRaw(q){const L=[];let b=0;q.forEach(x=>{const i=Math.floor(b/SEQ_LINE+1e-6);(L[i]=L[i]||[]).push(x);b+=x[1]});return L.filter(Boolean)}
+function seqLines(q){
+  const L=[];let b=0;
+  q.forEach(x=>{const i=Math.floor(b/SEQ_LINE+1e-6);(L[i]=L[i]||[]).push(x);b+=x[1]});
+  return L.filter(Boolean).map(l=>seqParts(l)).filter(l=>l.pat.length);
+}
+function seqApply(o){
+  const q=seqClean(o.seq),P=seqParts(q);
+  o.seq=q;['pat','dur','gap','lead','lines'].forEach(k=>delete o[k]);
+  o.modo=o.modo==='lee'?'lee':'sube';
+  o.lab=Array.isArray(o.lab)?o.lab.slice(0,60).map(x=>clean(x,12)):[];
+  if(!o.lab.length)delete o.lab;
+  if(P.pat.length){o.pat=P.pat;o.dur=P.dur;o.gap=P.gap;if(P.lead)o.lead=P.lead;o.bpm=[72,92,112].includes(+o.bpm)?+o.bpm:92;
+    if(o.modo==='lee')o.lines=seqLines(q)}
   return o;
 }
+const exLee=e=>!!(e&&e.modo==='lee'&&e.lines&&e.lines.length);
 const seqBeats=q=>(q||[]).reduce((a,x)=>a+(+x[1]||0),0);
 const exName=id=>{const e=exBase(id);return e?e.n:id};
 const exMinutes=e=>e.mode==='breath'?2:3;

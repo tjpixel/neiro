@@ -493,8 +493,8 @@ function openEx(id){
   openSheet(()=>{const inP=planEx().includes(id),custom=!EXC[id];
     return{title:esc(e.n),body:'<div class="pad stack">'+
       '<div class="row" style="gap:8px;padding:0 4px"><span class="pill gray">'+CATN[e.c]+'</span>'+(e.lv?'<span class="pill gray">'+(e.lv===2?'Avanzado':'Intermedio')+'</span>':'')+(inP?'<span class="pill tint">En tu práctica</span>':'')+'</div>'+
-      '<p class="bd" style="padding:0 4px;white-space:pre-wrap">'+esc(e.how||'')+'</p>'+
-      (e.pat?playerHTML(id,PV.tonic,PAT.on,true)+'<p class="fn l2" style="padding:0 6px;margin-top:-4px">Suena el acorde de la tónica y después el patrón. Canta encima; al llegar arriba de tu rango, baja solo.</p>':'')+
+      (e.pat?howBox(e.how):'<p class="bd" style="padding:0 4px;white-space:pre-wrap">'+esc(e.how||'')+'</p>')+
+      (e.pat?playerHTML(id,PV.tonic,PAT.on,true)+'<p class="fn l2" style="padding:0 6px;margin-top:-4px">'+(exLee(e)?'Suena el acorde y después las líneas de seguido, sin parar; al acabar vuelve a la primera. Con ↓ ↑ cambias el tono.':'Suena el acorde de la tónica y después el patrón. Canta encima; al llegar arriba de tu rango, baja solo.')+'</p>':'')+
       (e.pat?'<div class="group"><button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Sonido y velocidad</span><span class="val">'+pnoTxt()+'</span>'+chev()+'</div></button>'+
         '<button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Vista</span><span class="val">'+PNO_VIEW[pianoCfg().view].n+'</span>'+chev()+'</div></button></div>':'')+
       (e.mode==='tuner'?'<button class="btn sec" onclick="openTuner(true)">'+ic('gauge',18)+'Abrir el afinador</button>':'')+
@@ -521,19 +521,28 @@ function openPlanEditor(){
   void bl;
 }
 function blAdj(i,d){const b=(DB.cfg.bl||goalMins(goalsOf(),DB.cfg.mins)).slice();b[i]=Math.max(0,Math.min(60,b[i]+d));DB.cfg.bl=b;save();drawSheet();render()}
+/* «Cómo se hace» plegado: una línea de muestra y, al tocar, el texto entero (deja sitio a la guía) */
+let HOW_OPEN=false;
+function howBox(t,cls){
+  if(!t)return '';const f=String(t).split(/(?<=[.!?…])\s/)[0];
+  return '<details class="howd'+(cls?' '+cls:'')+'"'+(HOW_OPEN?' open':'')+' ontoggle="HOW_OPEN=this.open"><summary><span class="fn semi hwt">Cómo se hace</span><span class="fn l2 ell hwp">'+esc(f)+'</span>'+chev()+'</summary><p class="sb">'+esc(t)+'</p></details>';
+}
 let CX=null;
 /* ═════ EJERCICIO PROPIO ═════
    Nombre, tipo y cómo se hace; y, si quieres, las notas de la hoja para que el piano y la guía lo toquen
    como los demás (sube medio tono cada vuelta y, al llegar a tu tope, baja). Las notas se escriben desde el Do de la hoja. */
 const CX_T=[[.5,'Corchea','½'],[1,'Negra','1'],[2,'Blanca','2'],[4,'Redonda','4']];
 const CX_V=[[72,'Lenta'],[92,'Media'],[112,'Ágil']];
+/* según para qué es el ejercicio: técnica (subir de tono por la tesitura) o lectura (tono fijo, de seguido, para mantener el pulso) */
+const CX_M=[['sube','Subir de tono','Medio tono más arriba cada vuelta, por toda tu tesitura'],['lee','Leer seguido','Tono fijo y sin parar, línea tras línea: para leer y mantener el pulso']];
+function cxModo(b){b.parentNode.querySelectorAll('.cxm').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-checked',x===b)})}
 const CX_KEYS=[];for(let k=-5;k<=19;k++)CX_KEYS.push(k);
 /* nombre de una nota de la hoja: Do, Mi, Sol… con un punto arriba (octava de arriba) o abajo (octava de abajo) */
 const cxName=k=>NN[((k%12)+12)%12];
 const cxOct=k=>k>=12?'up':(k<0?'lo':'');
 function openCustomEx(id){
   const e=id?DB.cex[id]:null;
-  CX={id:id||null,n:e?e.n:'',c:e?e.c:'tec',how:e?e.how:'',seq:e&&e.seq?e.seq.map(x=>x.slice()):[],bpm:(e&&e.bpm)||92,t:1,sel:-1};
+  CX={id:id||null,n:e?e.n:'',c:e?e.c:'tec',how:e?e.how:'',seq:e&&e.seq?e.seq.map(x=>x.slice()):[],bpm:(e&&e.bpm)||92,modo:(e&&e.modo)||'sube',lab:e&&e.lab?e.lab.slice():null,t:1,sel:-1};
   patStop();
   openSheet(()=>({title:e?'Editar ejercicio':'Nuevo ejercicio',ok:1,onOk:'saveCustomEx()',body:'<div class="pad stack">'+
     '<div class="field"><label for="cxN">Nombre</label><input id="cxN" maxlength="60" value="'+esc(CX.n)+'" oninput="CX.n=this.value" placeholder="Por ejemplo: Hoja de clase · 18"></div>'+
@@ -554,9 +563,10 @@ function cxNotesHTML(){
       '<div class="row" style="gap:8px"><button class="btn sec grow cxsm" onclick="cxRest()"><span class="cxrest"></span>Silencio</button>'+
         '<button class="btn sec cxsm" style="width:auto;flex:none;padding:0 22px" onclick="cxBack()" aria-label="Borrar nota">'+ic('bksp',20)+'</button></div>'+
     '</div>'+
-    '<p class="fn l2" style="padding:0 6px">Escríbelas como en la hoja, nota a nota, tomando el Do como 1. Neiro las lleva a tu voz y sube medio tono cada vuelta, como en los demás ejercicios. Toca una nota de la fila para cambiarla o borrarla.</p></div>'+
+    '<p class="fn l2" style="padding:0 6px">Escríbelas como en la hoja, nota a nota, tomando el Do como 1. Neiro las lleva a tu voz. Toca una nota de la fila para cambiarla o borrarla.</p></div>'+
+    '<div class="field"><label>Cómo se practica</label><div class="cxmodo" role="radiogroup">'+CX_M.map(([k,n,d])=>'<button class="cxm'+(CX.modo===k?' on':'')+'" role="radio" aria-checked="'+(CX.modo===k)+'" onclick="CX.modo=\''+k+'\';cxModo(this)"><span class="hl">'+n+'</span><span class="fn l2">'+d+'</span></button>').join('')+'</div></div>'+
     '<div class="field"><label>Velocidad</label><div class="segc cxvel">'+CX_V.map(([v,n])=>'<button class="'+(CX.bpm===v?'on':'')+'" onclick="CX.bpm='+v+';segOn(this)">'+n+'</button>').join('')+'</div></div>'+
-    '<button class="btn sec" id="cxPlay" onclick="cxListen()">'+ic('play',18)+'Escuchar una vuelta</button>';
+    '<button class="btn sec" id="cxPlay" onclick="cxListen()">'+ic('play',18)+'Escuchar '+(CX.modo==='lee'?'la primera línea':'una vuelta')+'</button>';
 }
 function cxSeqHTML(){
   if(!CX.seq.length)return '<p class="fn l3 cxempty">Aún no hay notas. Toca las teclas de abajo.</p>';
@@ -595,7 +605,9 @@ function cxBack(){if(!CX.seq.length)return;if(CX.sel>=0){CX.seq.splice(CX.sel,1)
 function cxListen(){
   const b=$('cxPlay');
   if(PAT.on){patStop();if(b)b.innerHTML=ic('play',18)+'Escuchar una vuelta';return}
-  const e=seqApply({id:'cx_prev',seq:CX.seq.map(x=>x.slice()),bpm:CX.bpm});
+  /* en lectura seguida, solo la primera línea (para comprobar lo escrito sin esperar a toda la hoja) */
+  const q=CX.modo==='lee'?seqLinesRaw(CX.seq)[0]||[]:CX.seq;
+  const e=seqApply({id:'cx_prev',seq:q.map(x=>x.slice()),bpm:CX.bpm,modo:'sube'});
   if(!e.pat)return toast('Añade alguna nota');
   patStart(e,startTonic(e),null);
   patFinish(()=>{const x=$('cxPlay');if(x)x.innerHTML=ic('play',18)+'Escuchar una vuelta'});
@@ -604,7 +616,8 @@ function cxListen(){
 function saveCustomEx(){
   const n=clean(CX.n,60);if(!n)return toast('Ponle nombre');
   const id=CX.id||'c_'+uid(),prev=DB.cex[id]||{};
-  DB.cex[id]=seqApply({n,c:CX.c,how:clean(CX.how),custom:1,seq:CX.seq,bpm:CX.bpm});
+  DB.cex[id]=seqApply({n,c:CX.c,how:clean(CX.how),custom:1,seq:CX.seq,bpm:CX.bpm,modo:CX.modo,lab:CX.lab});
+  if(PAT.ciId===id)PAT.ci=0;
   if(prev.seq&&!DB.cex[id].pat)delete DB.extop[id];
   if(!CX.id){DB.plan=DB.plan||{ex:[]};DB.plan.ex.push(id);DB.plan.src='edit'}
   patStop();save();closeSheet();render();toast('Guardado');
@@ -617,7 +630,7 @@ const b64u={
   enc:s=>btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),
   dec:s=>decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/'))))
 };
-function exPack(ids){return ids.map(id=>DB.cex[id]).filter(Boolean).map(e=>({n:e.n,c:e.c,how:e.how||'',seq:e.seq||[],bpm:e.bpm||92}))}
+function exPack(ids){return ids.map(id=>DB.cex[id]).filter(Boolean).map(e=>Object.assign({n:e.n,c:e.c,how:e.how||'',seq:e.seq||[],bpm:e.bpm||92},e.modo==='lee'?{modo:'lee'}:{},e.lab?{lab:e.lab}:{}))}
 const exLink=ids=>location.origin+location.pathname+'#ej='+b64u.enc(JSON.stringify(exPack(ids)));
 async function shareEx(id){
   const url=exLink([id]),e=DB.cex[id];
@@ -628,24 +641,28 @@ let EXIMP=null;
 function readImport(){
   const m=/[#&]ej=([A-Za-z0-9_-]+)/.exec(location.hash);if(!m)return null;
   try{const a=JSON.parse(b64u.dec(m[1]));if(!Array.isArray(a))return null;
-    return a.filter(isObj).slice(0,40).map(o=>seqApply({n:clean(o.n,60)||'Ejercicio',c:CATN[o.c]?o.c:'tec',how:clean(o.how),custom:1,seq:o.seq,bpm:o.bpm}))}catch(e){return null}
+    return a.filter(isObj).slice(0,40).map(o=>({e:seqApply({n:clean(o.n,60)||'Ejercicio',c:CATN[o.c]?o.c:'tec',how:clean(o.how),custom:1,seq:o.seq,bpm:o.bpm,modo:o.modo,lab:o.lab}),sust:Array.isArray(o.sust)?o.sust.slice(0,40).map(x=>clean(x,60)):[]}))}catch(e){return null}
 }
 function clearImportHash(){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){location.hash=''}}
 const seqSig=e=>e.n+'|'+JSON.stringify(e.seq||[]);
 function checkImport(){
   const L=readImport();if(!L){if(/[#&]ej=/.test(location.hash)){clearImportHash();toast('El enlace no se ha podido leer')}return}
   const have=new Set(Object.values(DB.cex).map(seqSig));
-  EXIMP=L.map(e=>({e,dup:have.has(seqSig(e))}));
+  /* sust: ejercicios que este sustituye (por ejemplo, los sueltos de una hoja que ahora va entera); se borran al añadirlo */
+  EXIMP=L.map(({e,sust})=>({e,dup:have.has(seqSig(e)),rm:Object.keys(DB.cex).filter(id=>sust.includes(DB.cex[id].n))}));
   openSheet(()=>{const nw=EXIMP.filter(x=>!x.dup).length;
     return{title:EXIMP.length===1?'Ejercicio para añadir':'Ejercicios para añadir',body:'<div class="pad stack">'+
-      '<p class="sb l2 center" style="padding:0 10px">'+(EXIMP.length===1?'Este enlace trae un ejercicio':'Este enlace trae '+EXIMP.length+' ejercicios')+'. Se añaden al catálogo; para practicarlos, actívalos con «En mi práctica».</p>'+
-      '<div class="group">'+EXIMP.map(({e,dup})=>'<div class="cell static"><span class="ic soft">'+ic(CAT_IC[e.c]||'note',17)+'</span><div class="cb"><div class="tt"><p class="bd ell">'+esc(e.n)+'</p><p class="fn l2 ell">'+CATN[e.c]+(e.pat?' · '+e.pat.length+' notas · '+plural(seqBeats(e.seq),'tiempo'):'')+(dup?' · ya lo tienes':'')+'</p></div></div></div>').join('')+'</div>'+
+      '<p class="sb l2 center" style="padding:0 10px">'+(EXIMP.length===1?'Este enlace trae un ejercicio':'Este enlace trae '+EXIMP.length+' ejercicios')+(EXIMP.length===1?'. Se añade al catálogo; para practicarlo, actívalo con «En mi práctica».':'. Se añaden al catálogo; para practicarlos, actívalos con «En mi práctica».')+'</p>'+
+      '<div class="group">'+EXIMP.map(({e,dup,rm})=>'<div class="cell static"><span class="ic soft">'+ic(CAT_IC[e.c]||'note',17)+'</span><div class="cb"><div class="tt"><p class="bd ell">'+esc(e.n)+'</p><p class="fn l2 ell">'+CATN[e.c]+(e.pat?' · '+e.pat.length+' notas · '+plural(seqBeats(e.seq),'tiempo'):'')+(dup?' · ya lo tienes':'')+'</p>'+(!dup&&rm.length?'<p class="fn amb ell">Sustituye a '+(rm.length===1?esc(DB.cex[rm[0]].n):plural(rm.length,'ejercicio')+' sueltos')+': se borran</p>':'')+'</div></div></div>').join('')+'</div>'+
       (nw?'<button class="btn pri" onclick="doImport()">'+ic('plus',18,2.4)+(nw===1?'Añadir':'Añadir '+nw)+'</button>':'<p class="fn l2 center">Ya los tienes todos.</p>')+
       '<button class="btn tx" onclick="closeSheet()">'+(nw?'Ahora no':'Cerrar')+'</button></div>'}});
   onSheetClose=()=>{EXIMP=null;clearImportHash()};
 }
 function doImport(){
-  const L=(EXIMP||[]).filter(x=>!x.dup);L.forEach(({e})=>{DB.cex['c_'+uid()]=e});
+  const L=(EXIMP||[]).filter(x=>!x.dup);
+  L.forEach(({e,rm})=>{const id='c_'+uid(),inP=DB.plan&&rm.some(x=>DB.plan.ex.includes(x));
+    rm.forEach(x=>{delete DB.cex[x];delete DB.extop[x];if(DB.plan)DB.plan.ex=DB.plan.ex.filter(y=>y!==x)});
+    DB.cex[id]=e;if(inP){DB.plan.ex.push(id);DB.plan.src='edit'}});
   PREF.set('st','ex');save();closeSheet();go('estudio');toast(L.length===1?'Ejercicio añadido':plural(L.length,'ejercicio añadido','ejercicios añadidos'));
 }
 function delCustomEx(){const id=CX.id;delete DB.cex[id];if(DB.plan)DB.plan.ex=DB.plan.ex.filter(x=>x!==id);save();closeSheet();render();toast('Ejercicio borrado')}
@@ -1388,9 +1405,9 @@ function renderSession(){
       '<div style="display:flex;justify-content:center;margin-top:14px">'+miniTimer()+'</div>';
   }else if(e){
     if(PV.id!==s.ex){PV={id:s.ex,tonic:startTonic(e)}}
-    body='<div class="card" style="margin-top:14px;padding:13px 16px"><p class="sb">'+esc(e.how)+'</p></div>'+
+    body=(e.pat?howBox(e.how,'ss'):'<div class="card" style="margin-top:14px;padding:13px 16px"><p class="sb">'+esc(e.how)+'</p></div>')+
       (s.b==='tec'&&lc&&lc.f?'<div class="note" style="margin-top:10px"><span>En qué fijarte: <b>'+esc(lc.f)+'</b></span></div>':'')+
-      (e.pat?'<div style="margin-top:14px">'+playerHTML(s.ex,PV.tonic,PAT.on)+'</div><div style="display:flex;justify-content:center;margin-top:12px">'+miniTimer()+'</div>'
+      (e.pat?'<div style="margin-top:10px">'+playerHTML(s.ex,PV.tonic,PAT.on)+'</div>'
         :'<div style="display:flex;justify-content:center;margin-top:18px">'+ring(RING)+'</div>');
   }else if(s.b==='rep'){
     const L2=songsActive(),sg=L2.find(x=>x.id===SS.song)||L2[0];
@@ -1403,20 +1420,24 @@ function renderSession(){
   }else if(s.b==='gus'){
     body='<p class="sb l2" style="margin-top:10px">Algo que te apetezca, sin corregirte. Este rato es solo para disfrutar.</p><div class="row" style="justify-content:center;gap:24px;margin-top:26px;align-items:flex-end">'+dkStage('cheer',1.5)+ring(RING)+'</div>';
   }
-  const foot='<div class="foot"><div class="row" style="gap:8px;justify-content:center">'+(L<=0?'':'<button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause(1)" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button>')+'<button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
+  /* con piano y guía, todo cabe en una pantalla: tiempo, pausa y +1 min en una fila y «Siguiente» en pequeño */
+  const cmp=!!(e&&e.pat&&!e.mode);
+  const foot=cmp?'<div class="foot cmp"><div class="row" style="gap:6px">'+miniTimer(1)+(L<=0?'':'<button class="btn '+(SS.run?'sec':'pri')+' fbtn grow" onclick="togglePause(1)" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',15)+'Pausa':ic('play',13)+(SS.wait?'Empezar':'Seguir'))+'</button>')+
+      '<button class="btn sec fbtn'+(L<=0?' grow':'')+'" style="'+(L<=0?'':'width:auto;padding:0 14px')+'" onclick="addMin()">+1 min</button></div>'+nextBtn(L,last,nx,1)+'</div>'
+    :'<div class="foot"><div class="row" style="gap:8px;justify-content:center">'+(L<=0?'':'<button class="btn '+(SS.run?'sec':'pri')+' sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="togglePause(1)" aria-label="'+(SS.run?'Pausar la práctica':(SS.wait?'Empezar este paso':'Seguir con la práctica'))+'">'+(SS.run?ic('pause',16)+'Pausa':ic('play',14)+(SS.wait?'Empezar':'Seguir'))+'</button>')+'<button class="btn sec sm" style="height:44px;min-width:124px;padding:0 20px;border-radius:22px;font-size:15px" onclick="addMin()">+1 min</button></div>'+
     nextBtn(L,last,nx)+'</div>';
-  $('session').innerHTML='<div class="fullin">'+sessHead()+'<p class="fn l2" style="margin-top:20px">'+sub+'</p><h1 class="lt balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
+  $('session').innerHTML='<div class="fullin'+(cmp?' cmp':'')+'">'+sessHead()+'<p class="fn l2" style="margin-top:'+(cmp?14:20)+'px">'+sub+'</p><h1 class="'+(cmp?'t1 sstt':'lt')+' balance" style="margin-top:2px">'+title+'</h1>'+body+foot+'</div>';
   if(e&&e.mode==='tuner'&&TUN.on){TUN.cb=(r)=>tunerUpdate(r)}
 }
 /* «Siguiente» solo es protagonista cuando toca (como en Tsuyo, un solo lima grande: lo que toca hacer ahora).
    Con el paso pendiente o en marcha es una tarjeta gris para pasar antes de tiempo; con el paso hecho, el botón grande en lima. */
-function nextBtn(L,last,nx){
+function nextBtn(L,last,nx,sm){
   const nm=last?'':esc(nx.ex?exName(nx.ex):nx.bn);
-  if(L<=0)return '<button class="btn pri lg" style="margin-top:6px" onclick="nextStep()">'+(last?ic('check',22,2.6)+'Terminar':'Siguiente: '+nm)+'</button>';
-  return '<button class="nxbtn" onclick="nextStep()" aria-label="'+(last?'Terminar la práctica ahora':'Pasar a '+nm+' sin acabar este paso')+'"><span class="pi">'+(last?ic('check',18,2.6):ic('chevR',18,2.6))+'</span>'+
+  if(L<=0)return '<button class="btn pri lg'+(sm?' fnx':'')+'" style="margin-top:'+(sm?2:6)+'px" onclick="nextStep()">'+(last?ic('check',22,2.6)+'Terminar':'Siguiente: '+nm)+'</button>';
+  return '<button class="nxbtn'+(sm?' sm':'')+'" onclick="nextStep()" aria-label="'+(last?'Terminar la práctica ahora':'Pasar a '+nm+' sin acabar este paso')+'"><span class="pi">'+(last?ic('check',18,2.6):ic('chevR',18,2.6))+'</span>'+
     '<span class="grow" style="min-width:0"><span class="hl ell" style="display:block">'+(last?'Terminar ahora':'Siguiente: '+nm)+'</span><span class="fn l2" style="display:block">Sin acabar este paso</span></span></button>';
 }
-const miniTimer=()=>{const L=stepLeft(),s=SS.steps[SS.i];return '<div class="mtimer'+(L<=0?' done':'')+'">'+ic(L<=0?'check':'clock',16,L<=0?2.6:2)+'<span class="fn num semi" id="ssT" style="color:'+endTxt(L)+'">'+fmtL(L)+'</span><span class="c1 l2" id="ssL">'+ringLbl(L,s)+'</span></div>'};
+const miniTimer=(sm)=>{const L=stepLeft(),s=SS.steps[SS.i];return '<div class="mtimer'+(L<=0?' done':'')+(sm?' sm':'')+'">'+ic(L<=0?'check':'clock',16,L<=0?2.6:2)+'<span class="fn num semi" id="ssT" style="color:'+endTxt(L)+'">'+fmtL(L)+'</span><span class="c1 l2" id="ssL"'+(sm?' hidden':'')+'>'+ringLbl(L,s)+'</span></div>'};
 function holdToggle(){
   const s=SS.steps[SS.i];
   if(!SS.holdOn){if(!SS.run)togglePause();SS.holdOn=true;SS.holdT0=Date.now();renderSession();return}

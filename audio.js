@@ -119,39 +119,67 @@ function ding(tonic,k){
    En velocidad tranquila, entre el acorde y el patrón suena sola la nota de inicio.
    Al llegar al límite de tu rango, baja.
    Una vuelta es un plan con sus tiempos: el piano lo toca y la escalera lo dibuja con los mismos tiempos. */
-function patPlan(e){
-  const pc=pianoCfg(),k=VEL[pc.vel]||1,calm=pc.vel==='tranq';
+/* ci: en lectura seguida, la línea que toca; first: si es la primera de la tanda (con acorde y, en tranquila, la nota de inicio) */
+function patPlan(e,ci,first){
+  const pc=pianoCfg(),k=VEL[pc.vel]||1,calm=pc.vel==='tranq',lee=exLee(e);
+  if(lee&&ci==null)ci=leeCi(e);
+  const src=lee?e.lines[Math.max(0,Math.min(e.lines.length-1,ci||0))]:e,cho=!lee||first!==false;   // la primera línea de una tanda empieza con el acorde
+
   /* las sirenas ya son lentas: en tranquila solo se frenan un poco */
   const b=60/((e.bpm||100)*(e.glide?Math.max(k,.85):k));
-  const pl={glide:!!e.glide,chord:calm?1.1:.8,cd:calm?1.5:1.1,pre:null,it:[],tail:calm?.5:0};
+  const pl={glide:!!e.glide,chord:cho?(calm?1.1:.8):0,cd:cho?(calm?1.5:1.1):0,pre:null,it:[],tail:lee?0:(calm?.5:0),b,ci:lee?ci:0,lee:lee?1:0,nochord:cho?0:1};
   let t=pl.cd;
-  if(calm&&!e.glide&&!e.hold){pl.pre={k:e.pat[0],t,len:.9,d:1.3};t+=1.3}
+  if(cho&&calm&&!e.glide&&!e.hold){pl.pre={k:src.pat[0],t,len:.9,d:1.3};t+=1.3}
   pl.tp=t;let u=0;
   if(e.glide){for(let i=1;i<e.pat.length;i++){pl.it.push({k0:e.pat[i-1],k1:e.pat[i],t:u,d:b*2,len:b*2});u+=b*2}}
   /* ejercicios propios: cada nota con su duración (dur, en tiempos) y su silencio detrás (gap); lead = silencio antes de la primera */
-  else{if(e.lead)u+=e.lead*b;e.pat.forEach((s,i)=>{const h=e.hold&&i===0,bt=e.dur?(+e.dur[i]||1):1,d=h?e.hold:b*bt,len=h?e.hold:(e.stac?b*.35:b*bt*.95);pl.it.push({k:s,t:u,d,len});u+=d+(e.gap?(+e.gap[i]||0)*b:0)})}
+  else{if(src.lead)u+=src.lead*b;src.pat.forEach((s,i)=>{const h=e.hold&&i===0,bt=src.dur?(+src.dur[i]||1):1,d=h?e.hold:b*bt,len=h?e.hold:(e.stac?b*.35:b*bt*.95);pl.it.push({k:s,t:u,d,len,bt:(u/b)});u+=d+(src.gap?(+src.gap[i]||0)*b:0)})}
   pl.D=u;return pl;
 }
+/* línea en la que está (o se quedó) la lectura seguida de este ejercicio */
+const leeCi=e=>PAT.ciId===e.id?PAT.ci:0;
 /* toca una vuelta y devuelve cuánto dura en segundos; la deja en PAT.round para la escalera */
 function playPattern(e,tonic,t0){
-  const c=ac();if(!c||!e.pat)return 0;
-  const pl=patPlan(e),base=t0||c.currentTime,s=base+.05;
-  chord(tonic,s,pl.chord);
+  const R=playRound(e,tonic,(t0||(AC&&AC.currentTime)||0)+.05,patPlan(e));if(!R)return 0;
+  PAT.round=R;
+  return R.s+R.pl.tp+R.pl.D-(t0||AC.currentTime)+R.pl.tail;
+}
+/* toca un plan empezando justo en s (tiempo del audio) y devuelve la vuelta {tonic, s, pl} */
+function playRound(e,tonic,s,pl){
+  const c=ac();if(!c||!e.pat)return null;
+  if(pl.chord)chord(tonic,s,pl.chord);
   if(pl.pre)pianoNote(tonic+pl.pre.k,s+pl.pre.t,pl.pre.len);
   pl.it.forEach(n=>{if(pl.glide)glideNote(tonic+n.k0,tonic+n.k1,s+pl.tp+n.t,n.d);else pianoNote(tonic+n.k,s+pl.tp+n.t,n.len)});
-  PAT.round={tonic,s,pl};
-  return s+pl.tp+pl.D-base+pl.tail;
+  return{tonic,s,pl};
 }
 /* techo del patrón: lo más agudo de tu rango menos un semitono, o tu «nota más aguda cómoda» del ejercicio */
 function patTop(e){const r=myRange();return Math.min(r.hi-1,midiOf(DB.extop[(e&&e.id)||'']||'')||99)}
-const PAT={on:false,e:null,tonic:48,dir:1,timer:null,cb:null,bus:null,round:null,ending:false,onEnd:null,req:0};
+const PAT={on:false,e:null,tonic:48,dir:1,timer:null,t2:null,cb:null,bus:null,round:null,ending:false,onEnd:null,req:0,ci:0,ciId:null,nextAt:0};
 /* dir: 1 sube, -1 baja (al seguir tras una pausa, continúa en el sentido en que iba) */
 function patStart(e,tonic,cb,dir){
   patStop();if(!e||!e.pat)return;
   const c=ac(),m=master();
   if(c&&m){PAT.bus=c.createGain();PAT.bus.gain.value=1;PAT.bus.connect(m)}
-  PAT.ending=false;PAT.onEnd=null;PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;patLoop();
+  PAT.ending=false;PAT.onEnd=null;PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;
+  if(exLee(e)){if(PAT.ciId!==e.id||PAT.ci>=e.lines.length){PAT.ci=0;PAT.ciId=e.id}leeLoop(true)}else patLoop();
   if(vozWanted()&&e.id!=='cx_prev')vozStart();
+}
+/* ═════ LECTURA SEGUIDA ═════
+   Tono fijo y sin parar: la primera línea empieza con el acorde; después cada línea entra justo al acabar la anterior,
+   con el mismo pulso, y al llegar al final vuelve a la primera. Al pausar y seguir, repite la línea que se cortó. */
+function leeLoop(first){
+  if(!PAT.on)return;
+  const c=ac(),e=PAT.e;if(!c)return;
+  const at=first?c.currentTime+.05:PAT.nextAt,pl=patPlan(e,PAT.ci,first);
+  ROUTE=PAT.bus;const R=playRound(e,PAT.tonic,at,pl);ROUTE=null;if(!R)return;
+  const swap=()=>{if(!PAT.on)return;PAT.round=R;if(PAT.cb)PAT.cb(PAT.tonic)};
+  if(first)swap();else{clearTimeout(PAT.t2);PAT.t2=setTimeout(swap,Math.max(0,(at-c.currentTime)*1000))}
+  PAT.nextAt=R.s+pl.tp+pl.D;
+  PAT.timer=setTimeout(()=>{
+    if(!PAT.on)return;
+    if(PAT.ending){const f=PAT.onEnd;PAT.timer=setTimeout(()=>{patStop();if(f)f()},Math.max(0,(PAT.nextAt-c.currentTime)*1000));return}
+    PAT.ci=(PAT.ci+1)%e.lines.length;leeLoop(false);
+  },Math.max(0,(PAT.nextAt-c.currentTime-.35)*1000));
 }
 function patLoop(){
   if(!PAT.on)return;
@@ -170,7 +198,8 @@ function patLoop(){
 function patFinish(onEnd){if(!PAT.on){if(onEnd)onEnd();return}PAT.ending=true;PAT.onEnd=onEnd||null}
 function patStop(){
   PAT.req++;if(VOZ.on||VOZ.stream)vozLater();
-  PAT.on=false;PAT.ending=false;PAT.onEnd=null;PAT.round=null;clearTimeout(PAT.timer);PAT.timer=null;
+  PAT.on=false;PAT.ending=false;PAT.onEnd=null;PAT.round=null;clearTimeout(PAT.timer);clearTimeout(PAT.t2);PAT.timer=PAT.t2=null;
+  /* en lectura seguida, si se paró a mitad de una línea, al seguir se repite esa línea */
   const b=PAT.bus,c=AC;PAT.bus=null;
   if(b&&c){try{const t=c.currentTime;b.gain.cancelScheduledValues(t);b.gain.setValueAtTime(b.gain.value,t);b.gain.linearRampToValueAtTime(0,t+.04);setTimeout(()=>{try{b.disconnect()}catch(e){}},120)}catch(e){}}
   if(PAT.cb)PAT.cb(PAT.tonic);

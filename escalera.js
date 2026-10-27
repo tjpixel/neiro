@@ -30,7 +30,7 @@ const gdPlaying=id=>!!(PAT.on&&PAT.round&&PAT.e&&PAT.e.id===id);
 const gdTonic=(id,e)=>gdPlaying(id)?PAT.round.tonic:(PV.id===id?PV.tonic:startTonic(e));
 /* plan que se dibuja: el de la vuelta que suena o, parado, el de tus ajustes */
 const gdPlan=(id,e)=>gdPlaying(id)?PAT.round.pl:patPlan(e);
-const plSig=pl=>pl.tp.toFixed(3)+'|'+pl.D.toFixed(3);
+const plSig=pl=>pl.tp.toFixed(3)+'|'+pl.D.toFixed(3)+'|'+(pl.ci||0)+(pl.nochord?'n':'');
 const patLo=e=>Math.min(...e.pat),patHi=e=>Math.max(...e.pat);
 /* ventana de notas: todo tu rango si cabe; si no, la parte alrededor del patrón */
 function gdWin(e,tonic,v){
@@ -44,6 +44,10 @@ function gdWin(e,tonic,v){
 }
 function gdInfo(e,tonic,id){
   const top=noteName(tonic+patHi(e));
+  if(exLee(e)){
+    const N=e.lines.length,ci=gdPlaying(id)?PAT.round.pl.ci:leeCi(e),lb=e.lab&&e.lab[ci]?'Nº '+e.lab[ci]+' · ':'';
+    return{c:gdPlaying(id)?'tint':'gray',top,t:gdPlaying(id)?'♪ '+lb+'línea '+(ci+1)+' de '+N:'Lectura seguida · '+(N===1?'1 línea':N+' líneas')+' · tono fijo'};
+  }
   if(!gdPlaying(id))return{c:'gray',t:'Medio tono más arriba cada vuelta',top};
   const up=PAT.dir>0,rem=Math.max(0,up?patTop(e)-(tonic+patHi(e)):(tonic+patLo(e))-myRange().lo),n=rem===1?'falta 1':'faltan '+rem;
   return{c:up?'tint':'gray',top,t:up?(rem?'↑ Sube · '+n+' para tu tope':'↑ En tu tope · ahora baja'):(rem?'↓ Baja · '+n+' para abajo':'↓ Abajo del todo · ahora sube')};
@@ -62,18 +66,19 @@ function gdMake(id,e){
   const vz=pianoCfg().voz?1:0;
   const html='<div class="ghd"><span class="pill '+inf.c+'" data-g="pill">'+inf.t+'</span><div class="gtop"><p class="c1 l2">Más aguda</p><p class="fn semi num" data-g="top">'+inf.top+'</p></div></div>'+
     (v==='tec'?tecHTML(e,tonic,w,pl,vz):escHTML(e,tonic,w,pl,++GD_N,vz))+
-    (vz?'<div class="gvoz"><i></i><span class="fn semi">Tu voz</span><span class="fn semi num vn" data-g="vozn"></span><span class="fn l2 vs" data-g="vozs"></span></div>':'');
+    (vz?'<div class="gvoz"><i></i><span class="fn semi">Tu voz</span><span class="fn semi num vn" data-g="vozn"></span><span class="fn l2 vs" data-g="vozs"></span></div>':'')+
+    (e.seq&&e.seq.length?'<div class="gpg" data-g="staff"></div>':'');
   return{html,pl,st:{v,t:tonic,a:w.a,b:w.b,full:w.full,sig:plSig(pl),top:patTop(e),vz}};
 }
 /* rehace la guía en su sitio */
-function gdBuild(el,id,e){const g=gdMake(id,e);el.innerHTML=g.html;el._st=g.st;gdParts(el,e,g.pl)}
+function gdBuild(el,id,e){el._pgli=undefined;const g=gdMake(id,e);el.innerHTML=g.html;el._st=g.st;gdParts(el,e,g.pl)}
 
 /* ── escalera (vertical) ── */
 const GW=360,GROW=9,GKX=30,GKW=18,GGX=GKX+GKW+12,GCW=22;
 /* forma de una vuelta en coordenadas de la tónica (y = 0 es la fila de la tónica) */
 function escShapes(pl){
   const PX=GGX+GCW+(pl.pre?30:12),PW=GW-PX-6,xs=t=>PX+t/pl.D*PW,sh=[];
-  [0,4,7].forEach(k=>sh.push({i:'c',x:GGX,w:GCW,k}));
+  if(!pl.nochord)[0,4,7].forEach(k=>sh.push({i:'c',x:GGX,w:GCW,k}));
   if(pl.pre)sh.push({i:'p',x:GGX+GCW+8,w:14,k:pl.pre.k});
   if(pl.glide)pl.it.forEach((it,j)=>sh.push({i:String(j),seg:1,x0:xs(it.t)+(j===0?5:0),x1:xs(it.t+it.d)-(j===pl.it.length-1?5:0),k0:it.k0,k1:it.k1}));
   else pl.it.forEach((it,j)=>sh.push({i:String(j),x:xs(it.t)+1.5,w:Math.max(4,it.len/pl.D*PW-3),k:it.k}));
@@ -123,7 +128,7 @@ function escHTML(e,tonic,w,pl,n,vz){
     const g=S.sh.filter(x=>x.seg),pts=[{x:g[0].x0,k:g[0].k0}].concat(g.map(x=>({x:x.x1,k:x.k1})));
     pts.forEach(p=>lab+='<text class="gdeg" x="'+p.x.toFixed(1)+'" y="'+(-p.k*GROW-2.5)+'">'+degOf(p.k)+'</text>');
   }else S.sh.filter(x=>x.i!=='c').forEach(x=>lab+='<text class="gdeg" data-i="'+x.i+'" x="'+(x.x+x.w/2).toFixed(1)+'" y="'+(-x.k*GROW-2)+'">'+degOf(x.k)+'</text>');
-  lab+='<text class="gtag" x="'+(GGX+GCW/2)+'" y="'+(GROW+9)+'">acorde</text>';
+  if(!pl.nochord)lab+='<text class="gtag" x="'+(GGX+GCW/2)+'" y="'+(GROW+9)+'">acorde</text>';
   return s+'<g data-g="ghost"></g><g data-g="pat" class="gpat" style="transform:translate(0px,'+yT(tonic)+'px)">'+
     S.sh.map(x=>escShape(x,'var(--g-bar)')).join('')+
     '<g clip-path="url(#gdc'+n+')">'+S.sh.map(x=>escShape(x,'var(--g-done)','gl')).join('')+'</g>'+lab+
@@ -143,9 +148,10 @@ function tecKeys(w){
 function tecHTML(e,tonic,w,pl,vz){
   const r=myRange(),K=tecKeys(w),names=K.kw>=17,inR=m=>m>=r.lo&&m<=r.hi;
   /* el orden: acorde, nota de inicio (en tranquila) y el patrón; en las sirenas, los puntos de giro */
-  let q='<span class="wd" data-i="c">Acorde</span>'+(pl.pre?'<span data-i="p">'+degOf(pl.pre.k)+'</span><i></i>':'');
-  q+=e.pat.map((k,j)=>'<span data-i="'+j+'">'+degOf(k)+'</span>'+(pl.glide&&j<e.pat.length-1?'<b>→</b>':'')).join('');
-  let s='<div class="gseq" aria-label="Orden de las notas">'+q+'</div>'+
+  let q=(pl.nochord?'':'<span class="wd" data-i="c">Acorde</span>')+(pl.pre?'<span data-i="p">'+degOf(pl.pre.k)+'</span><i></i>':'');
+  q+=(pl.glide?e.pat:pl.it.map(x=>x.k)).map((k,j,a)=>'<span data-i="'+j+'">'+degOf(k)+'</span>'+(pl.glide&&j<a.length-1?'<b>→</b>':'')).join('');
+  /* patrones muy largos: el orden no cabe; el pentagrama de abajo ya lo enseña */
+  let s=(pl.it.length>28?'':'<div class="gseq" aria-label="Orden de las notas">'+q+'</div>')+
     '<svg class="gsvg gkbd" viewBox="0 0 '+GW+' '+TKH+'" role="img" aria-label="'+esc(gdAria(e,tonic))+'" onclick="gdTap(event)">';
   K.wh.forEach(m=>{const x=K.x[m],cx=(x+K.kw/2).toFixed(1);
     s+='<g opacity="'+(inR(m)?1:.4)+'"><rect data-m="'+m+'" x="'+(x+.5).toFixed(1)+'" y="0" width="'+(K.kw-1).toFixed(1)+'" height="'+TKH+'" rx="3" fill="var(--kw)" stroke="var(--kedge)" stroke-width=".6"/>'+
@@ -251,6 +257,7 @@ function gdTick(el){
     gdSet(el,'chip',ci,()=>P.chips.forEach((x,j)=>{x.classList.toggle('now',j===ci);x.classList.toggle('done',ci>=0&&j<ci)}));
   }
   if(st.vz)gdVoz(el,v,R);
+  if(e.seq&&e.seq.length)pgTick(el,e,R,snd);
 }
 
 /* ═════ TU VOZ ENCIMA ═════
