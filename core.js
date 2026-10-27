@@ -97,6 +97,23 @@ const EXC={
     how:'Sirenas descendentes muy suaves con «u» o labios. Baja la intensidad: la voz debe quedar cómoda, no cansada.'}
 };
 const exBase=id=>EXC[id]||(DB.cex||{})[id]||null;
+/* ═════ NOTAS DE UN EJERCICIO PROPIO ═════
+   seq: [[k, t], …] tal cual está en la hoja. k = semitonos desde el Do de la hoja (null = silencio); t = tiempos (½ corchea, 1 negra, 2 blanca, 4 redonda).
+   De ahí sale lo que lee el piano y la guía: pat (solo las notas), dur (tiempos de cada nota), gap (silencio detrás) y lead (silencio antes de la primera). */
+const SEQ_T=[.5,1,1.5,2,3,4],SEQ_LO=-7,SEQ_HI=24,SEQ_MAX=96;
+function seqClean(q){
+  if(!Array.isArray(q))return [];
+  return q.slice(0,SEQ_MAX).map(x=>Array.isArray(x)?x:[]).map(([k,t])=>[k==null||k===''?null:Math.round(+k),SEQ_T.includes(+t)?+t:1])
+    .filter(([k])=>k===null||(Number.isFinite(k)&&k>=SEQ_LO&&k<=SEQ_HI));
+}
+function seqApply(o){
+  const q=seqClean(o.seq),pat=[],dur=[],gap=[];let lead=0;
+  q.forEach(([k,t])=>{if(k===null){if(pat.length)gap[pat.length-1]+=t;else lead+=t}else{pat.push(k);dur.push(t);gap.push(0)}});
+  o.seq=q;delete o.pat;delete o.dur;delete o.gap;delete o.lead;
+  if(pat.length){o.pat=pat;o.dur=dur;o.gap=gap;if(lead)o.lead=lead;o.bpm=[72,92,112].includes(+o.bpm)?+o.bpm:92}
+  return o;
+}
+const seqBeats=q=>(q||[]).reduce((a,x)=>a+(+x[1]||0),0);
 const exName=id=>{const e=exBase(id);return e?e.n:id};
 const exMinutes=e=>e.mode==='breath'?2:3;
 

@@ -51,6 +51,7 @@ function mergeDefaults(o){
     cex:isObj(o.cex)?o.cex:{},extop:isObj(o.extop)?o.extop:{},best:isObj(o.best)?o.best:{},
     classes:arr(o.classes),songs:arr(o.songs),ss:arr(o.ss),recs:arr(o.recs),range:arr(o.range),goals:arr(o.goals)
   });
+  for(const id in D.cex){if(!isObj(D.cex[id]))delete D.cex[id];else if(D.cex[id].seq)seqApply(D.cex[id])}
   if(!Array.isArray(D.cfg.avail)||!D.cfg.avail.length)D.cfg.avail=[1,3,5];
   D.cfg.avail=D.cfg.avail.map(Number).filter(n=>n>=0&&n<=6);
   if(!MINS.includes(+D.cfg.mins))D.cfg.mins=20;

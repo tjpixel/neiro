@@ -332,6 +332,34 @@ body.locked{position:fixed;left:0;right:0;overflow:hidden}
 /* ── reproductor con guía: escalera (vertical) o teclado (horizontal) ── */
 .pcard{border-radius:24px;background:var(--bg2);padding:12px 10px 10px;display:flex;flex-direction:column;gap:10px}
 .pcard>.player{background:none;border-radius:0;padding:10px 0 0;border-top:.5px solid var(--sep)}
+/* ejercicio propio: notas de la hoja */
+.cxbox{display:flex;flex-direction:column;gap:12px;padding:12px;border-radius:18px;background:var(--sheet2)}
+.cxseq{display:flex;flex-wrap:wrap;align-items:center;gap:5px 4px;min-height:44px;max-height:176px;overflow-y:auto;padding:2px}
+.cxempty{padding:12px 4px}
+.cxinfo{flex-basis:100%;padding:4px 2px 0}
+.cxn{--w:1;position:relative;height:38px;width:calc(var(--w)*30px + (var(--w) - 1)*4px);min-width:26px;border-radius:10px;background:var(--fill2);color:var(--label);display:grid;place-items:center;font:600 12.5px/1 "DM Sans",-apple-system,system-ui,sans-serif;transition:background .12s,box-shadow .12s}
+.cxn b{position:relative;font-weight:600}
+.cxn.r{background:none;box-shadow:inset 0 0 0 1.5px var(--fill)}
+.cxn.sel{background:var(--tint);color:var(--on-tint);box-shadow:none}
+.cxn.sel .cxrest{background:var(--on-tint)}
+.cxbar{width:1.5px;height:30px;border-radius:1px;background:var(--label3);opacity:.55;margin:0 3px}
+b.up::before,b.lo::after{content:'';position:absolute;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:currentColor}
+b.up::before{top:-6px}b.lo::after{bottom:-6px}
+.cxrest{display:inline-block;width:12px;height:4px;border-radius:2px;background:var(--label3)}
+.btn .cxrest{margin-right:2px;background:currentColor;opacity:.6}
+.cxdur button{display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px}
+.cxdg{--w:1;display:inline-block;height:6px;width:calc(var(--w)*6px + 2px);max-width:26px;border-radius:3px;background:currentColor;opacity:.45}
+.cxdur button.on .cxdg{background:var(--ink);opacity:1}
+.cxkbw{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px;scrollbar-width:none}
+.cxkbw::-webkit-scrollbar{display:none}
+.cxkb{position:relative;display:flex;min-width:470px;height:118px}
+.cxw{flex:1;margin:0 1px;border-radius:0 0 9px 9px;background:var(--kw);box-shadow:inset 0 0 0 .5px var(--kedge);display:flex;align-items:flex-end;justify-content:center;padding-bottom:12px;color:var(--kname);font:600 11px/1 "DM Sans",-apple-system,system-ui,sans-serif;transition:background .08s}
+.cxw.do{color:var(--kdeg)}.cxw.do b{font-weight:800}
+.cxw b{position:relative}
+.cxk{position:absolute;top:0;width:4.2%;height:60%;border-radius:0 0 6px 6px;background:var(--kb);z-index:1;transition:background .08s}
+.cxw:active{background:var(--tint)}.cxk:active{background:var(--ink)}
+.cxsm{height:44px;font-size:15px}
+.cxvel button{text-align:center}
 .guide{display:flex;flex-direction:column;gap:8px}
 .ghd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 4px}
 .ghd .pill{min-width:0;overflow:hidden;text-overflow:ellipsis}

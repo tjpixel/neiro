@@ -128,7 +128,8 @@ function patPlan(e){
   if(calm&&!e.glide&&!e.hold){pl.pre={k:e.pat[0],t,len:.9,d:1.3};t+=1.3}
   pl.tp=t;let u=0;
   if(e.glide){for(let i=1;i<e.pat.length;i++){pl.it.push({k0:e.pat[i-1],k1:e.pat[i],t:u,d:b*2,len:b*2});u+=b*2}}
-  else e.pat.forEach((s,i)=>{const h=e.hold&&i===0,d=h?e.hold:b,len=h?e.hold:(e.stac?b*.35:b*.95);pl.it.push({k:s,t:u,d,len});u+=d});
+  /* ejercicios propios: cada nota con su duración (dur, en tiempos) y su silencio detrás (gap); lead = silencio antes de la primera */
+  else{if(e.lead)u+=e.lead*b;e.pat.forEach((s,i)=>{const h=e.hold&&i===0,bt=e.dur?(+e.dur[i]||1):1,d=h?e.hold:b*bt,len=h?e.hold:(e.stac?b*.35:b*bt*.95);pl.it.push({k:s,t:u,d,len});u+=d+(e.gap?(+e.gap[i]||0)*b:0)})}
   pl.D=u;return pl;
 }
 /* toca una vuelta y devuelve cuánto dura en segundos; la deja en PAT.round para la escalera */
@@ -150,7 +151,7 @@ function patStart(e,tonic,cb,dir){
   const c=ac(),m=master();
   if(c&&m){PAT.bus=c.createGain();PAT.bus.gain.value=1;PAT.bus.connect(m)}
   PAT.ending=false;PAT.onEnd=null;PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;patLoop();
-  if(vozWanted())vozStart();
+  if(vozWanted()&&e.id!=='cx_prev')vozStart();
 }
 function patLoop(){
   if(!PAT.on)return;

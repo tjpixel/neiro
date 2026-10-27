@@ -11,7 +11,9 @@
 'use strict';
 
 const DEGN={0:'1',2:'2',4:'3',5:'4',7:'5',9:'6',11:'7',12:'8'};
-const degOf=k=>DEGN[k]||'';
+/* más allá de la octava, 9 · 10 · 11 · 12; por debajo de la tónica, el grado de la octava de abajo */
+const DEGX={14:'9',16:'10',17:'11',19:'12',21:'13'};
+const degOf=k=>DEGN[k]||DEGX[k]||(k<0?DEGN[((k%12)+12)%12]||'':'');
 const pc12=m=>((m%12)+12)%12;
 const isBlk=m=>[1,3,6,8,10].includes(pc12(m));
 const gView=()=>pianoCfg().view;
@@ -193,7 +195,7 @@ function gdSound(R,t){
   if(pl.pre&&t<s+pl.tp)return{cur:'p',keys:t<s+pl.pre.t+pl.pre.len?[m+pl.pre.k]:[]};
   const tr=t-s-pl.tp;
   if(tr>=pl.D)return{cur:'end',keys:[]};
-  const j=Math.max(0,pl.it.findIndex(n=>tr>=n.t&&tr<n.t+n.d)),n=pl.it[j];
+  let j=0;pl.it.forEach((x,i)=>{if(tr>=x.t)j=i});const n=pl.it[j];
   if(pl.glide){const k=n.k0+(n.k1-n.k0)*(tr-n.t)/n.d;return{cur:String(j),keys:[m+Math.round(k)],tr,k}}
   return{cur:String(j),keys:tr<n.t+n.len?[m+n.k]:[],tr,n};
 }

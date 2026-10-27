@@ -36,6 +36,8 @@ const IC={
   keys:'<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M9 5v14M15 5v14"/><path d="M7.5 5v7h3V5M13.5 5v7h3V5" fill="currentColor"/>',
   ear:'<path d="M7 9.5a5 5 0 0 1 10 0c0 3-2.6 3.8-3.2 5.8-.5 1.6-1.4 3.2-3.3 3.2A2.6 2.6 0 0 1 8 16"/><path d="M10 9.5a2 2 0 0 1 4 0"/>',
   smile:'<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2M9 9.8v.4M15 9.8v.4"/>',
+  share:'<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M7 10.5H6a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V12a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
+  bksp:'<path d="M9 5.5h10a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H9L3.5 12z"/><path d="M11.5 9.5l5 5M16.5 9.5l-5 5"/>',
   user:'<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.8 4-5.6 7.5-5.6s6.3 1.8 7.5 5.6"/>'
 };
 const ic=(n,s=20,w=2)=>'<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="'+w+'" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+IC[n]+'</svg>';
@@ -501,7 +503,7 @@ function openEx(id){
         '<select style="border:0;background:none;color:var(--label2);font-size:17px;text-align:right" onchange="DB.extop[\''+id+'\']=this.value;save();render()" aria-label="Nota más aguda cómoda"><option value="">—</option>'+NOTES.map(m=>'<option'+(DB.extop[id]===noteName(m)?' selected':'')+'>'+noteName(m)+'</option>').join('')+'</select></div></div></div>':'')+
       '<div class="group"><button class="cell" onclick="'+(isPlus()?'togglePlanEx(\''+id+'\')':'openPlus()')+'"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">En mi práctica</p>'+(isPlus()?'':'<p class="fn l2">Elegir ejercicios es de Plus</p>')+'</div>'+
         (isPlus()?'<span class="sw'+(inP?' on':'')+'" role="switch" aria-checked="'+inP+'"></span>':ic('lock',17))+'</div></button></div>'+
-      (custom?'<button class="btn sec" onclick="openCustomEx(\''+id+'\')">Editar ejercicio</button>':'')+
+      (custom?'<div class="row" style="gap:8px"><button class="btn sec grow" onclick="openCustomEx(\''+id+'\')">'+ic('pen',18)+'Editar</button><button class="btn sec grow" onclick="shareEx(\''+id+'\')">'+ic('share',18)+'Compartir</button></div>':'')+
       '</div>'}},SHS.length>0&&$('sheet').classList.contains('on'));
   onSheetClose=()=>patStop();
 }
@@ -520,19 +522,131 @@ function openPlanEditor(){
 }
 function blAdj(i,d){const b=(DB.cfg.bl||goalMins(goalsOf(),DB.cfg.mins)).slice();b[i]=Math.max(0,Math.min(60,b[i]+d));DB.cfg.bl=b;save();drawSheet();render()}
 let CX=null;
+/* ═════ EJERCICIO PROPIO ═════
+   Nombre, tipo y cómo se hace; y, si quieres, las notas de la hoja para que el piano y la guía lo toquen
+   como los demás (sube medio tono cada vuelta y, al llegar a tu tope, baja). Las notas se escriben desde el Do de la hoja. */
+const CX_T=[[.5,'Corchea','½'],[1,'Negra','1'],[2,'Blanca','2'],[4,'Redonda','4']];
+const CX_V=[[72,'Lenta'],[92,'Media'],[112,'Ágil']];
+const CX_KEYS=[];for(let k=-5;k<=19;k++)CX_KEYS.push(k);
+/* nombre de una nota de la hoja: Do, Mi, Sol… con un punto arriba (octava de arriba) o abajo (octava de abajo) */
+const cxName=k=>NN[((k%12)+12)%12];
+const cxOct=k=>k>=12?'up':(k<0?'lo':'');
 function openCustomEx(id){
-  const e=id?DB.cex[id]:null;CX={id:id||null,n:e?e.n:'',c:e?e.c:'tec',how:e?e.how:''};
+  const e=id?DB.cex[id]:null;
+  CX={id:id||null,n:e?e.n:'',c:e?e.c:'tec',how:e?e.how:'',seq:e&&e.seq?e.seq.map(x=>x.slice()):[],bpm:(e&&e.bpm)||92,t:1,sel:-1};
+  patStop();
   openSheet(()=>({title:e?'Editar ejercicio':'Nuevo ejercicio',ok:1,onOk:'saveCustomEx()',body:'<div class="pad stack">'+
-    '<div class="field"><label for="cxN">Nombre</label><input id="cxN" maxlength="60" value="'+esc(CX.n)+'" oninput="CX.n=this.value"></div>'+
-    '<div class="field"><label>Tipo</label><div class="segc" style="flex-wrap:wrap">'+CATS.map(([k,n])=>'<button class="'+(CX.c===k?'on':'')+'" style="padding:0 6px;font-size:13px" onclick="CX.c=\''+k+'\';this.parentNode.querySelectorAll(\'button\').forEach(b=>b.classList.remove(\'on\'));this.classList.add(\'on\')">'+n+'</button>').join('')+'</div></div>'+
-    '<div class="field"><label for="cxH">Cómo se hace</label><textarea class="ta" id="cxH" oninput="CX.how=this.value">'+esc(CX.how)+'</textarea></div>'+
+    '<div class="field"><label for="cxN">Nombre</label><input id="cxN" maxlength="60" value="'+esc(CX.n)+'" oninput="CX.n=this.value" placeholder="Por ejemplo: Hoja de clase · 18"></div>'+
+    '<div class="field"><label>Tipo</label><div class="segc" style="flex-wrap:wrap">'+CATS.map(([k,n])=>'<button class="'+(CX.c===k?'on':'')+'" style="padding:0 6px;font-size:13px" onclick="CX.c=\''+k+'\';segOn(this)">'+n+'</button>').join('')+'</div></div>'+
+    '<div class="field"><label for="cxH">Cómo se hace</label><textarea class="ta" id="cxH" oninput="CX.how=this.value" placeholder="Vocal, intención, lo que te dijo tu profe…">'+esc(CX.how)+'</textarea></div>'+
+    cxNotesHTML()+
     (e?'<button class="btn sec danger" onclick="delCustomEx()">Borrar ejercicio</button>':'')+'</div>'}),true);
+  onSheetClose=()=>patStop();
+  requestAnimationFrame(cxScrollKb);
+}
+function segOn(b){b.parentNode.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on')}
+function cxNotesHTML(){
+  return '<div class="field"><label>Notas para el piano <span class="l3">· opcional</span></label>'+
+    '<div class="cxbox">'+
+      '<div id="cxSeq" class="cxseq" aria-live="polite">'+cxSeqHTML()+'</div>'+
+      '<div class="segc cxdur" role="radiogroup" aria-label="Duración">'+CX_T.map(([t,n])=>'<button data-t="'+t+'" class="'+(CX.t===t?'on':'')+'" onclick="cxDur('+t+')" role="radio" aria-checked="'+(CX.t===t)+'"><span class="cxdg" style="--w:'+Math.max(.5,t)+'"></span>'+n+'</button>').join('')+'</div>'+
+      '<div class="cxkbw" id="cxKbw"><div class="cxkb">'+cxKbHTML()+'</div></div>'+
+      '<div class="row" style="gap:8px"><button class="btn sec grow cxsm" onclick="cxRest()"><span class="cxrest"></span>Silencio</button>'+
+        '<button class="btn sec cxsm" style="width:auto;flex:none;padding:0 22px" onclick="cxBack()" aria-label="Borrar nota">'+ic('bksp',20)+'</button></div>'+
+    '</div>'+
+    '<p class="fn l2" style="padding:0 6px">Escríbelas como en la hoja, nota a nota, tomando el Do como 1. Neiro las lleva a tu voz y sube medio tono cada vuelta, como en los demás ejercicios. Toca una nota de la fila para cambiarla o borrarla.</p></div>'+
+    '<div class="field"><label>Velocidad</label><div class="segc cxvel">'+CX_V.map(([v,n])=>'<button class="'+(CX.bpm===v?'on':'')+'" onclick="CX.bpm='+v+';segOn(this)">'+n+'</button>').join('')+'</div></div>'+
+    '<button class="btn sec" id="cxPlay" onclick="cxListen()">'+ic('play',18)+'Escuchar una vuelta</button>';
+}
+function cxSeqHTML(){
+  if(!CX.seq.length)return '<p class="fn l3 cxempty">Aún no hay notas. Toca las teclas de abajo.</p>';
+  let h='',beat=0;
+  CX.seq.forEach(([k,t],i)=>{
+    if(i&&beat>0&&Math.abs(beat%4)<1e-6)h+='<i class="cxbar" aria-hidden="true"></i>';
+    h+='<button class="cxn'+(k===null?' r':'')+(i===CX.sel?' sel':'')+'" style="--w:'+t+'" onclick="cxPick('+i+')" aria-label="'+(k===null?'Silencio':cxName(k)+(k>=12?' de arriba':(k<0?' de abajo':'')))+', '+CX_T.find(x=>x[0]===t)?.[1]+'">'+
+      (k===null?'<span class="cxrest"></span>':'<b class="'+cxOct(k)+'">'+cxName(k)+'</b>')+'</button>';
+    beat+=t;
+  });
+  const b=seqBeats(CX.seq),c=b/4;
+  return h+'<p class="fn l3 cxinfo">'+(Number.isInteger(b)?b:b.toFixed(1))+' tiempos'+(Number.isInteger(c)?' · '+plural(c,'compás','compases')+' de 4/4':'')+'</p>';
+}
+function cxKbHTML(){
+  const wh=CX_KEYS.filter(k=>!isBlk(k)),W=100/wh.length;
+  return wh.map(k=>'<button class="cxw'+(k===0||k===12?' do':'')+'" onclick="cxKey('+k+')" aria-label="'+cxName(k)+(k>=12?' de arriba':(k<0?' de abajo':''))+'"><b class="'+cxOct(k)+'">'+cxName(k)+'</b></button>').join('')+
+    CX_KEYS.filter(isBlk).map(k=>{const i=wh.indexOf(k-1);return '<button class="cxk" style="left:calc('+((i+1)*W).toFixed(3)+'% - 2.1%)" onclick="cxKey('+k+')" aria-label="'+cxName(k)+'"></button>'}).join('');
+}
+function cxScrollKb(){const w=$('cxKbw');if(w&&w.scrollWidth>w.clientWidth){const d=w.querySelector('.cxw.do');if(d)w.scrollLeft=d.offsetLeft-12}}
+function cxRedraw(){const el=$('cxSeq');if(el)el.innerHTML=cxSeqHTML();
+  document.querySelectorAll('.cxdur button').forEach(b=>{const on=+b.dataset.t===CX.t;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)})}
+const cxBase=()=>startTonic({pat:[0]});
+function cxPut(k){
+  if(CX.sel>=0){CX.seq[CX.sel][0]=k;CX.sel=-1}
+  else{if(CX.seq.length>=SEQ_MAX)return toast('Hasta '+SEQ_MAX+' notas');CX.seq.push([k,CX.t])}
+  cxRedraw();const el=$('cxSeq');if(el)el.scrollTop=el.scrollHeight;
+}
+function cxKey(k){tone(cxBase()+k,.55);cxPut(k)}
+function cxRest(){cxPut(null)}
+function cxDur(t){CX.t=t;if(CX.sel>=0){CX.seq[CX.sel][1]=t;CX.sel=-1}cxRedraw()}
+function cxPick(i){
+  if(CX.sel===i){CX.sel=-1}else{CX.sel=i;const [k,t]=CX.seq[i];CX.t=t;if(k!==null)tone(cxBase()+k,.55)}
+  cxRedraw();
+}
+function cxBack(){if(!CX.seq.length)return;if(CX.sel>=0){CX.seq.splice(CX.sel,1);CX.sel=-1}else CX.seq.pop();cxRedraw()}
+function cxListen(){
+  const b=$('cxPlay');
+  if(PAT.on){patStop();if(b)b.innerHTML=ic('play',18)+'Escuchar una vuelta';return}
+  const e=seqApply({id:'cx_prev',seq:CX.seq.map(x=>x.slice()),bpm:CX.bpm});
+  if(!e.pat)return toast('Añade alguna nota');
+  patStart(e,startTonic(e),null);
+  patFinish(()=>{const x=$('cxPlay');if(x)x.innerHTML=ic('play',18)+'Escuchar una vuelta'});
+  if(b)b.innerHTML=ic('stop',18)+'Parar';
 }
 function saveCustomEx(){
   const n=clean(CX.n,60);if(!n)return toast('Ponle nombre');
-  const id=CX.id||'c_'+uid();DB.cex[id]={n,c:CX.c,how:clean(CX.how),custom:1};
+  const id=CX.id||'c_'+uid(),prev=DB.cex[id]||{};
+  DB.cex[id]=seqApply({n,c:CX.c,how:clean(CX.how),custom:1,seq:CX.seq,bpm:CX.bpm});
+  if(prev.seq&&!DB.cex[id].pat)delete DB.extop[id];
   if(!CX.id){DB.plan=DB.plan||{ex:[]};DB.plan.ex.push(id);DB.plan.src='edit'}
-  save();closeSheet();render();toast('Guardado');
+  patStop();save();closeSheet();render();toast('Guardado');
+}
+
+/* ═════ COMPARTIR EJERCICIOS ═════
+   Un enlace lleva uno o varios ejercicios propios (para pasarlos a otro móvil o que te los mande tu profe).
+   Al abrirlo, Neiro enseña lo que trae y pregunta antes de añadirlo. Formato: #ej=<base64url de [{n,c,how,seq,bpm}]>. */
+const b64u={
+  enc:s=>btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),
+  dec:s=>decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/'))))
+};
+function exPack(ids){return ids.map(id=>DB.cex[id]).filter(Boolean).map(e=>({n:e.n,c:e.c,how:e.how||'',seq:e.seq||[],bpm:e.bpm||92}))}
+const exLink=ids=>location.origin+location.pathname+'#ej='+b64u.enc(JSON.stringify(exPack(ids)));
+async function shareEx(id){
+  const url=exLink([id]),e=DB.cex[id];
+  if(navigator.share){try{await navigator.share({title:e.n+' · Neiro',text:'Ejercicio para Neiro: '+e.n,url});return}catch(x){if(x&&x.name==='AbortError')return}}
+  try{await navigator.clipboard.writeText(url);toast('Enlace copiado')}catch(x){prompt('Copia el enlace',url)}
+}
+let EXIMP=null;
+function readImport(){
+  const m=/[#&]ej=([A-Za-z0-9_-]+)/.exec(location.hash);if(!m)return null;
+  try{const a=JSON.parse(b64u.dec(m[1]));if(!Array.isArray(a))return null;
+    return a.filter(isObj).slice(0,40).map(o=>seqApply({n:clean(o.n,60)||'Ejercicio',c:CATN[o.c]?o.c:'tec',how:clean(o.how),custom:1,seq:o.seq,bpm:o.bpm}))}catch(e){return null}
+}
+function clearImportHash(){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){location.hash=''}}
+const seqSig=e=>e.n+'|'+JSON.stringify(e.seq||[]);
+function checkImport(){
+  const L=readImport();if(!L){if(/[#&]ej=/.test(location.hash)){clearImportHash();toast('El enlace no se ha podido leer')}return}
+  const have=new Set(Object.values(DB.cex).map(seqSig));
+  EXIMP=L.map(e=>({e,dup:have.has(seqSig(e))}));
+  openSheet(()=>{const nw=EXIMP.filter(x=>!x.dup).length;
+    return{title:EXIMP.length===1?'Ejercicio para añadir':'Ejercicios para añadir',body:'<div class="pad stack">'+
+      '<p class="sb l2 center" style="padding:0 10px">'+(EXIMP.length===1?'Este enlace trae un ejercicio':'Este enlace trae '+EXIMP.length+' ejercicios')+'. Se añaden al catálogo; para practicarlos, actívalos con «En mi práctica».</p>'+
+      '<div class="group">'+EXIMP.map(({e,dup})=>'<div class="cell static"><span class="ic soft">'+ic(CAT_IC[e.c]||'note',17)+'</span><div class="cb"><div class="tt"><p class="bd ell">'+esc(e.n)+'</p><p class="fn l2 ell">'+CATN[e.c]+(e.pat?' · '+e.pat.length+' notas · '+plural(seqBeats(e.seq),'tiempo'):'')+(dup?' · ya lo tienes':'')+'</p></div></div></div>').join('')+'</div>'+
+      (nw?'<button class="btn pri" onclick="doImport()">'+ic('plus',18,2.4)+(nw===1?'Añadir':'Añadir '+nw)+'</button>':'<p class="fn l2 center">Ya los tienes todos.</p>')+
+      '<button class="btn tx" onclick="closeSheet()">'+(nw?'Ahora no':'Cerrar')+'</button></div>'}});
+  onSheetClose=()=>{EXIMP=null;clearImportHash()};
+}
+function doImport(){
+  const L=(EXIMP||[]).filter(x=>!x.dup);L.forEach(({e})=>{DB.cex['c_'+uid()]=e});
+  PREF.set('st','ex');save();closeSheet();go('estudio');toast(L.length===1?'Ejercicio añadido':plural(L.length,'ejercicio añadido','ejercicios añadidos'));
 }
 function delCustomEx(){const id=CX.id;delete DB.cex[id];if(DB.plan)DB.plan.ex=DB.plan.ex.filter(x=>x!==id);save();closeSheet();render();toast('Ejercicio borrado')}
 
@@ -1380,6 +1494,7 @@ function startApp(){
   if(!DB.plan&&goalsOf().length)DB.plan=proposePlan(goalsOf(),DB.profile.lvl,DB.cfg.mins);
   if(!(DB.profile&&DB.profile.done)){openOnb();return}
   showApp();go('hoy');
+  if(/[#&]ej=/.test(location.hash))setTimeout(checkImport,350);
   const st=PREF.get('sess',null);
   if(st&&st.d===T()&&!st.out){restoreSess(st,false);render()}
 }
@@ -1391,6 +1506,7 @@ function boot(){
     if(document.visibilityState==='visible'){if(SS.on&&!SS.min)keepAwake(true);if(SS.on)tick();if(T()!==curDate)render()}
     else{patStop();if(SS.on&&SS.ph==='step')sessPersist()}
   });
+  window.addEventListener('hashchange',()=>{if(started&&DB.profile&&DB.profile.done&&/[#&]ej=/.test(location.hash))checkImport()});
   if(S.get(KEY+'_mode')==='local')startApp();else showWelcome();
 }
 boot();
