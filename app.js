@@ -264,7 +264,7 @@ function openHistory(){
     (isPlus()?'':'<button class="btn sec" style="margin-top:14px" onclick="openPlus()">Ver todo con Plus</button>')+'</div>'}));
 }
 function sessCell(s){
-  return '<div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd ell">'+(s.note?esc(s.note):(s.g?'Práctica guiada':'Práctica'))+'</p><p class="fn l2">'+fmtDY(s.d)+' · '+s.m+' min'+(s.song?' · '+esc(songName(s.song)):'')+'</p></div>'+
+  return '<div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd ell">'+(s.note?esc(s.note):(s.g?'Práctica guiada':(s.solo?esc(exName(s.solo)):'Práctica')))+'</p><p class="fn l2">'+fmtDY(s.d)+' · '+s.m+' min'+(s.solo&&s.note?' · '+esc(exName(s.solo)):'')+(s.solo&&!s.note?' · práctica suelta':'')+(s.song?' · '+esc(songName(s.song)):'')+'</p></div>'+
     '<span class="fn l2 num" style="text-align:right">'+(s.joy?'disfrute '+s.joy:'')+'</span><button class="ibtn" style="width:34px;height:34px;color:var(--label3)" onclick="delSess(\''+s.id+'\')" aria-label="Borrar">'+ic('trash',16)+'</button></div></div>';
 }
 function delSess(id){confirmSheet('Borrar práctica','Se quitará de tu historial.','Borrar',"DB.ss=DB.ss.filter(s=>s.id!=='"+id+"');save();backSheet();drawSheet();render()",true)}
@@ -520,6 +520,7 @@ function openEx(id){
       (e.pat?howBox(e.how):'<p class="bd" style="padding:0 4px;white-space:pre-wrap">'+esc(e.how||'')+'</p>')+
       (e.pat?playerHTML(id,PV.tonic,PAT.on,true)+'<p class="fn l2" style="padding:0 6px;margin-top:-4px">'+(exLee(e)?'Suena el acorde y después las líneas de seguido, sin parar; al acabar vuelve a la primera. Con ‹ › o deslizando el pentagrama vas a otra línea; con el botón de repetir, practicas la misma. Con ↓ ↑ cambias el tono.':'Suena el acorde de la tónica y después el patrón. Canta encima; al llegar arriba de tu rango, baja solo.')+'</p>':'')+
       (custom&&e.seq&&e.seq.length?bpmCell(id,e):'')+
+      soloHTML(id)+
       (e.pat?'<div class="group"><button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Sonido y velocidad</span><span class="val">'+pnoTxt()+'</span>'+chev()+'</div></button>'+
         '<button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Vista</span><span class="val">'+PNO_VIEW[pianoCfg().view].n+'</span>'+chev()+'</div></button></div>':'')+
       (e.mode==='tuner'?'<button class="btn sec" onclick="openTuner(true)">'+ic('gauge',18)+'Abrir el afinador</button>':'')+
@@ -1324,15 +1325,36 @@ function startSession(short){
   if(SS.on){expandSession();return}
   closeSheet();
   const sv=savedSess();if(sv&&!short){restoreSess(sv,true);toast('Sigues donde lo dejaste');return}
-  Object.assign(SS,{on:true,min:false,steps:buildSteps(short),i:0,t0:Date.now(),used:[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:short||null});
+  Object.assign(SS,{on:true,min:false,steps:buildSteps(short),i:0,t0:Date.now(),used:[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:short||null,solo:null});
   enterStep(false);$('session').classList.add('on');keepAwake(true);renderSession();renderAcc();
 }
-function sessPersist(out){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,left:stepLeft(),sec:(SS.steps[SS.i]||{}).sec,t0:SS.t0,mins:SS.mins,wait:!!SS.wait,out:!!out}:null)}
+/* ═════ PRÁCTICA SUELTA ═════
+   Un solo ejercicio, desde su ficha, con las mismas reglas que la práctica guiada (Empezar, pausa, Salir y seguir).
+   Cuenta como «Registrar sin guía»: suman sus minutos y el día cuenta si llegas a 5. Gratis. */
+const SOLO_MIN=[5,10,15];
+const soloMin=()=>{const m=+PREF.get('soloMin',10);return SOLO_MIN.includes(m)?m:10};
+const soloSteps=o=>[{b:'solo',bn:'Práctica suelta',ex:o.ex,k:1,of:1,sec:o.m*60}];
+function startSolo(id){
+  const e=exBase(id);if(!e)return;
+  if(SS.on){toast('Ya tienes una práctica abierta');closeSheet();expandSession();return}
+  if(savedSess()){toast('Antes sigue o descarta la práctica que dejaste a medias');return}
+  patStop();closeSheet();
+  const o={ex:id,m:soloMin()};
+  Object.assign(SS,{on:true,min:false,steps:soloSteps(o),i:0,t0:Date.now(),used:[],ph:'step',joy:0,snd:0,note:'',song:'',holdOn:false,mins:null,solo:o});
+  enterStep(false);$('session').classList.add('on');keepAwake(true);renderSession();renderAcc();
+}
+function soloHTML(id){
+  const m=soloMin();
+  return '<div class="group"><div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Práctica suelta</p><p class="fn l2">Cuenta en tu progreso desde 5 min</p></div>'+
+    '<div class="segc" style="width:168px;flex:none">'+SOLO_MIN.map(v=>'<button class="'+(v===m?'on':'')+'" onclick="PREF.set(\'soloMin\','+v+');segOn(this)" aria-label="'+v+' minutos">'+v+' min</button>').join('')+'</div></div></div></div>'+
+    '<button class="btn sec" onclick="startSolo(\''+id+'\')">'+ic('play',18)+'Practicar solo esto</button>';
+}
+function sessPersist(out){PREF.set('sess',SS.on&&SS.ph==='step'?{d:T(),i:SS.i,used:SS.used,left:stepLeft(),sec:(SS.steps[SS.i]||{}).sec,t0:SS.t0,mins:SS.mins,solo:SS.solo||null,wait:!!SS.wait,out:!!out}:null)}
 /* práctica que dejaste con «Salir» hoy: se puede seguir desde el mismo tiempo, sin sumar el rato fuera */
 function savedSess(){const st=PREF.get('sess',null);return st&&st.out&&st.d===T()?st:null}
 const savedSec=st=>(st.used||[]).reduce((a,b)=>a+(b||0),0)+Math.max(0,(st.sec||0)-Math.max(0,st.left||0));
 function restoreSess(st,run){
-  Object.assign(SS,{on:true,min:!run,steps:buildSteps(st.mins),i:Math.min(st.i||0,1e3),t0:st.t0||Date.now(),used:st.used||[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:st.mins||null});
+  Object.assign(SS,{on:true,min:!run,solo:st.solo&&exBase(st.solo.ex)?st.solo:null,steps:st.solo&&exBase(st.solo.ex)?soloSteps(st.solo):buildSteps(st.mins),i:Math.min(st.i||0,1e3),t0:st.t0||Date.now(),used:st.used||[],ph:'step',joy:0,snd:0,note:'',song:(songsActive()[0]||{}).id||'',holdOn:false,mins:st.mins||null});
   if(SS.i>=SS.steps.length)SS.i=SS.steps.length-1;
   const s=SS.steps[SS.i];if(st.sec)s.sec=st.sec;
   enterStep(false);if(st.left!=null){SS.left=Math.max(0,st.left);SS.beeped=SS.left<=0}
@@ -1523,6 +1545,7 @@ function saveSession(){
   const usedB=[...new Set(SS.steps.filter((s,i)=>(SS.used[i]||0)>20).map(s=>s.b))];
   const ex=[...new Set(SS.steps.filter((s,i)=>s.ex&&(SS.used[i]||0)>20).map(s=>s.ex))];
   SS.saved={m:Math.max(1,Math.round(sec/60)),ex:ex.length};
+  if(SS.solo){DB.ss.push({id:uid(),d:T(),ts:Date.now(),m:SS.saved.m,g:false,solo:SS.solo.ex,bl:[],song:'',ex,joy:SS.joy||0,snd:SS.snd||0,note:clean(SS.note,300)});save();SS.ph='done';renderSession();return}
   DB.ss.push({id:uid(),d:T(),ts:Date.now(),m:SS.saved.m,g:true,bl:usedB,song:usedB.includes('rep')?SS.song:'',ex,joy:SS.joy||0,snd:SS.snd||0,note:clean(SS.note,300)});
   save();SS.ph='done';renderSession();
 }
@@ -1530,6 +1553,7 @@ function renderDone(){
   const C=constancy(),pw=perWeek(),sv=SS.saved||{m:0,ex:0};
   $('session').innerHTML='<div class="fullin"><div style="display:flex;justify-content:center;margin-top:28px">'+dkStage(SS.joy&&SS.joy<=2?'tired':'cheer',3)+'</div>'+
     '<h1 class="t1 center" style="margin-top:22px">'+(SS.joy>=4?'¡Así se disfruta!':'Práctica completada')+'</h1><p class="sb l2 center" style="margin-top:4px">'+(SS.joy&&SS.joy<=2?'Los días flojos también cuentan. Mañana más.':'Cada día suma, aunque no lo oigas todavía.')+'</p>'+
+    (SS.solo?'<p class="fn l2 center" style="margin-top:8px">'+(minsToday()>=5||practicedOn(T())?'Hoy ya cuenta como día de práctica.':'Hoy llevas '+minsToday()+' min · desde 5 cuenta como día de práctica.')+'</p>':'')+
     '<div class="stack" style="margin-top:22px"><div class="card row" style="gap:0">'+[['Minutos',sv.m,''],['Ejercicios',sv.ex,''],['Esta semana',C.thisWeek,'/'+pw]].map(([l,v,u],i)=>
       '<div class="grow center" style="padding:13px 8px 12px'+(i?';border-left:.5px solid var(--sep)':'')+'"><p class="fn l2">'+l+'</p><p class="t2 num">'+v+'<span class="sb l3 semi">'+u+'</span></p></div>').join('')+'</div>'+
     (C.thisWeek>=C.need?'<div class="card row" style="padding:14px 16px;gap:13px"><span class="ic tint" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center">'+ic('trophy',22)+'</span><div class="grow"><p class="fn ink semi">Semana constante</p><p class="hl">Cuenta para tu cinturón '+(C.next?C.next[1].toLowerCase():'')+'</p></div></div>':'')+
