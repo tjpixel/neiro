@@ -398,6 +398,12 @@ b.up::before{top:-6px}b.lo::after{bottom:-6px}
 .cxvel button{text-align:center}
 /* pentagrama de los ejercicios propios */
 .gpg{padding:6px 0 0;border-top:.5px solid var(--sep);margin-top:2px}
+.gpg{touch-action:pan-y}
+.lnav{display:flex;align-items:center;gap:8px;padding:8px 0 0;border-top:.5px solid var(--sep)}
+.lnav .mini{width:36px;height:36px;background:var(--fill2)}
+.lnav .mini:disabled{opacity:.35}
+.lnav .lnl{min-width:0;text-align:center}
+.lnav .lrep.on{background:var(--tint);color:var(--on-tint)}
 .gstaff{width:100%;height:auto;display:block;color:var(--label)}
 .pgl{stroke:var(--label2);stroke-width:.8}.pgl.b{stroke-width:1}
 .pgfill{fill:var(--label)}

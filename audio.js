@@ -154,7 +154,7 @@ function playRound(e,tonic,s,pl){
 }
 /* techo del patrón: lo más agudo de tu rango menos un semitono, o tu «nota más aguda cómoda» del ejercicio */
 function patTop(e){const r=myRange();return Math.min(r.hi-1,midiOf(DB.extop[(e&&e.id)||'']||'')||99)}
-const PAT={on:false,e:null,tonic:48,dir:1,timer:null,t2:null,cb:null,bus:null,round:null,ending:false,onEnd:null,req:0,ci:0,ciId:null,nextAt:0};
+const PAT={on:false,e:null,tonic:48,dir:1,timer:null,t2:null,cb:null,bus:null,round:null,ending:false,onEnd:null,req:0,ci:0,ciId:null,nextAt:0,rep:false};
 /* dir: 1 sube, -1 baja (al seguir tras una pausa, continúa en el sentido en que iba) */
 function patStart(e,tonic,cb,dir){
   patStop();if(!e||!e.pat)return;
@@ -178,7 +178,7 @@ function leeLoop(first){
   PAT.timer=setTimeout(()=>{
     if(!PAT.on)return;
     if(PAT.ending){const f=PAT.onEnd;PAT.timer=setTimeout(()=>{patStop();if(f)f()},Math.max(0,(PAT.nextAt-c.currentTime)*1000));return}
-    PAT.ci=(PAT.ci+1)%e.lines.length;leeLoop(false);
+    if(!PAT.rep)PAT.ci=(PAT.ci+1)%e.lines.length;leeLoop(false);
   },Math.max(0,(PAT.nextAt-c.currentTime-.35)*1000));
 }
 function patLoop(){
@@ -204,6 +204,16 @@ function patStop(){
   if(b&&c){try{const t=c.currentTime;b.gain.cancelScheduledValues(t);b.gain.setValueAtTime(b.gain.value,t);b.gain.linearRampToValueAtTime(0,t+.04);setTimeout(()=>{try{b.disconnect()}catch(e){}},120)}catch(e){}}
   if(PAT.cb)PAT.cb(PAT.tonic);
 }
+/* lectura seguida: ir a otra línea (‹ › o deslizando el pentagrama). Si está sonando, empieza esa línea ya, con el acorde;
+   parado, solo se coloca ahí y el piano empezará por ella. rep: repetir la misma línea en vez de pasar a la siguiente. */
+function leeGo(e,ci){
+  if(!exLee(e))return;
+  const N=e.lines.length;ci=Math.max(0,Math.min(N-1,ci));
+  PAT.ciId=e.id;PAT.ci=ci;
+  if(PAT.on&&PAT.e&&PAT.e.id===e.id){const x=PAT.e,t=PAT.tonic,cb=PAT.cb,d=PAT.dir;patStop();PAT.ciId=x.id;PAT.ci=ci;patStart(x,t,cb,d)}
+}
+/* línea que se ve: la que suena o, parado, en la que se quedó */
+const leeNow=e=>PAT.on&&PAT.round&&PAT.e&&PAT.e.id===e.id&&PAT.round.pl.lee?PAT.round.pl.ci:leeCi(e);
 function patShift(d){PAT.tonic=Math.max(36,Math.min(84,PAT.tonic+d));return PAT.tonic}
 
 /* ═════ GRABADORA ═════ */

@@ -36,7 +36,7 @@ const IC={
   keys:'<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M9 5v14M15 5v14"/><path d="M7.5 5v7h3V5M13.5 5v7h3V5" fill="currentColor"/>',
   ear:'<path d="M7 9.5a5 5 0 0 1 10 0c0 3-2.6 3.8-3.2 5.8-.5 1.6-1.4 3.2-3.3 3.2A2.6 2.6 0 0 1 8 16"/><path d="M10 9.5a2 2 0 0 1 4 0"/>',
   smile:'<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2M9 9.8v.4M15 9.8v.4"/>',
-  share:'<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M7 10.5H6a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V12a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
+  rep:'<path d="M17 4.5l2.5 2.5L17 9.5"/><path d="M4.5 11.5V10a3 3 0 0 1 3-3h12"/><path d="M7 19.5L4.5 17 7 14.5"/><path d="M19.5 12.5V14a3 3 0 0 1-3 3h-12"/>',share:'<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M7 10.5H6a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V12a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
   bksp:'<path d="M9 5.5h10a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H9L3.5 12z"/><path d="M11.5 9.5l5 5M16.5 9.5l-5 5"/>',
   user:'<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.8 4-5.6 7.5-5.6s6.3 1.8 7.5 5.6"/>'
 };
@@ -437,8 +437,32 @@ const $vis=id=>{for(const x of document.querySelectorAll('[id="'+id+'"]'))if(x.g
 /* reproductor del patrón: arriba la guía (escalera o teclado, según Tú → Piano de referencia), abajo los controles */
 const pvSub=on=>VOZ.st==='check'?'Comprobando el micro…':(on?'Tónica ahora':'Piano de referencia');
 const vozBtn=()=>{const on=pianoCfg().voz;return '<button class="mini vozb'+(on?' on':'')+'" id="pvVoz" onclick="vozToggle()" aria-pressed="'+on+'" aria-label="'+(on?'Quitar tu voz de la guía':'Dibujar tu voz encima de la guía')+'">'+ic('mic',17,2.2)+'</button>'};
+/* lectura seguida: ‹ línea › para ir a otra parte de la hoja, y repetir una línea */
+function lnavTxt(e){const N=e.lines.length,ci=leeNow(e),lb=e.lab&&e.lab[ci]?'Nº '+e.lab[ci]:'Línea '+(ci+1);return{ci,N,t:lb,s:e.lab&&e.lab[ci]?'línea '+(ci+1)+' de '+N:'de '+N}}
+function lnavHTML(id){
+  const e=exBase(id);if(!exLee(e)||e.lines.length<2)return '';
+  const L=lnavTxt(e),rep=PAT.rep;
+  return '<div class="lnav" data-ln="'+esc(id)+'"><button class="mini" data-lv="-1" onclick="lnavGo(\''+id+'\',-1)"'+(L.ci<=0?' disabled':'')+' aria-label="Línea anterior">'+ic('chevL',18,2.4)+'</button>'+
+    '<div class="lnl grow" role="status"><p class="hl num" data-lt>'+L.t+'</p><p class="c1 l2" data-ls>'+L.s+'</p></div>'+
+    '<button class="mini lrep'+(rep?' on':'')+'" onclick="lnavRep()" aria-pressed="'+rep+'" aria-label="Repetir esta línea">'+ic('rep',17,2.2)+'</button>'+
+    '<button class="mini" data-lv="1" onclick="lnavGo(\''+id+'\',1)"'+(L.ci>=L.N-1?' disabled':'')+' aria-label="Línea siguiente">'+ic('chevR',18,2.4)+'</button></div>';
+}
+function lnavGo(id,d){const e=Object.assign({id},exBase(id));if(!exLee(e))return;leeGo(PAT.on&&PAT.e&&PAT.e.id===id?PAT.e:e,leeNow(e)+d);lnavUI();drawPlayerState()}
+function lnavRep(){PAT.rep=!PAT.rep;document.querySelectorAll('.lrep').forEach(b=>{b.classList.toggle('on',PAT.rep);b.setAttribute('aria-pressed',PAT.rep)});toast(PAT.rep?'Repite esta línea':'Sigue línea tras línea')}
+/* pone al día ‹ línea › (lo llama la guía en cada fotograma; solo toca lo que cambia) */
+function lnavUI(){
+  document.querySelectorAll('.lnav').forEach(n=>{const e=exBase(n.dataset.ln);if(!exLee(e))return;const L=lnavTxt(e),k=L.ci+'|'+L.N;if(n._k===k)return;n._k=k;
+    n.querySelector('[data-lt]').textContent=L.t;n.querySelector('[data-ls]').textContent=L.s;
+    n.querySelector('[data-lv="-1"]').disabled=L.ci<=0;n.querySelector('[data-lv="1"]').disabled=L.ci>=L.N-1});
+}
+/* deslizar el pentagrama a un lado o a otro: línea anterior o siguiente */
+(()=>{let sx=0,sy=0,el=null;
+  document.addEventListener('touchstart',ev=>{el=ev.target.closest&&ev.target.closest('.gpg');if(!el)return;const t=ev.touches[0];sx=t.clientX;sy=t.clientY},{passive:true});
+  document.addEventListener('touchend',ev=>{if(!el)return;const g=el.closest('.guide'),t=ev.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;el=null;
+    if(g&&Math.abs(dx)>44&&Math.abs(dx)>Math.abs(dy)*1.5)lnavGo(g.dataset.id,dx<0?1:-1)},{passive:true});
+})();
 function playerHTML(id,tonic,on,small){
-  return '<div class="pcard"'+(small?' style="background:var(--sheet2)"':'')+'>'+guideHTML(id)+
+  return '<div class="pcard"'+(small?' style="background:var(--sheet2)"':'')+'>'+guideHTML(id)+lnavHTML(id)+
     '<div class="player"><button class="playbtn'+(on?' on':'')+'" id="pvBtn" onclick="pvToggle()" aria-label="'+(on?'Parar el piano':'Tocar el patrón')+'">'+ic(on?'pause':'play',20)+'</button>'+
     '<div class="grow" style="min-width:0"><p class="hl num" id="pvT">'+noteName(tonic)+'</p><p class="c1 l2 ell">'+pvSub(on)+'</p></div>'+vozBtn()+
     '<button class="mini" style="background:var(--fill2)" onclick="pvShift(-1)" aria-label="Bajar medio tono">'+ic('dn',17,2.4)+'</button><button class="mini" style="background:var(--fill2)" onclick="pvShift(1)" aria-label="Subir medio tono">'+ic('up',17,2.4)+'</button></div></div>';
@@ -494,7 +518,8 @@ function openEx(id){
     return{title:esc(e.n),body:'<div class="pad stack">'+
       '<div class="row" style="gap:8px;padding:0 4px"><span class="pill gray">'+CATN[e.c]+'</span>'+(e.lv?'<span class="pill gray">'+(e.lv===2?'Avanzado':'Intermedio')+'</span>':'')+(inP?'<span class="pill tint">En tu práctica</span>':'')+'</div>'+
       (e.pat?howBox(e.how):'<p class="bd" style="padding:0 4px;white-space:pre-wrap">'+esc(e.how||'')+'</p>')+
-      (e.pat?playerHTML(id,PV.tonic,PAT.on,true)+'<p class="fn l2" style="padding:0 6px;margin-top:-4px">'+(exLee(e)?'Suena el acorde y después las líneas de seguido, sin parar; al acabar vuelve a la primera. Con ↓ ↑ cambias el tono.':'Suena el acorde de la tónica y después el patrón. Canta encima; al llegar arriba de tu rango, baja solo.')+'</p>':'')+
+      (e.pat?playerHTML(id,PV.tonic,PAT.on,true)+'<p class="fn l2" style="padding:0 6px;margin-top:-4px">'+(exLee(e)?'Suena el acorde y después las líneas de seguido, sin parar; al acabar vuelve a la primera. Con ‹ › o deslizando el pentagrama vas a otra línea; con el botón de repetir, practicas la misma. Con ↓ ↑ cambias el tono.':'Suena el acorde de la tónica y después el patrón. Canta encima; al llegar arriba de tu rango, baja solo.')+'</p>':'')+
+      (custom&&e.seq&&e.seq.length?bpmCell(id,e):'')+
       (e.pat?'<div class="group"><button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Sonido y velocidad</span><span class="val">'+pnoTxt()+'</span>'+chev()+'</div></button>'+
         '<button class="cell" onclick="openPiano(true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Vista</span><span class="val">'+PNO_VIEW[pianoCfg().view].n+'</span>'+chev()+'</div></button></div>':'')+
       (e.mode==='tuner'?'<button class="btn sec" onclick="openTuner(true)">'+ic('gauge',18)+'Abrir el afinador</button>':'')+
@@ -506,6 +531,24 @@ function openEx(id){
       (custom?'<div class="row" style="gap:8px"><button class="btn sec grow" onclick="openCustomEx(\''+id+'\')">'+ic('pen',18)+'Editar</button><button class="btn sec grow" onclick="shareEx(\''+id+'\')">'+ic('share',18)+'Compartir</button></div>':'')+
       '</div>'}},SHS.length>0&&$('sheet').classList.contains('on'));
   onSheetClose=()=>patStop();
+}
+/* tempo de un ejercicio propio, en la hoja del ejercicio: − / + de 4 en 4; se oye desde la línea (o vuelta) siguiente */
+const bpmName=v=>({72:'Lenta',92:'Media',112:'Ágil'})[v]||'';
+function bpmSub(v){const k=VEL[pianoCfg().vel]||1,n=bpmName(v);return 'Negras por minuto'+(n?' · '+n:'')+(k!==1?' · con Tranquila, '+Math.round(v*k):'')}
+function bpmCell(id,e){
+  const v=bpmOk(e.bpm);
+  return '<div class="group"><div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Tempo</p><p class="fn l2" id="bpmS">'+bpmSub(v)+'</p></div>'+
+    '<div class="row" style="gap:8px"><button class="mini" style="background:var(--fill2)" onclick="bpmAdj(\''+id+'\',-4)" aria-label="Más lento"'+(v<=BPM_LO?' disabled':'')+' id="bpmM">'+ic('minus',16,2.4)+'</button>'+
+    '<span class="t3 num" style="min-width:44px;text-align:center" id="bpmV" aria-live="polite">'+v+'</span>'+
+    '<button class="mini" style="background:var(--fill2)" onclick="bpmAdj(\''+id+'\',4)" aria-label="Más rápido"'+(v>=BPM_HI?' disabled':'')+' id="bpmP">'+ic('plus',16,2.4)+'</button></div></div></div></div>';
+}
+function bpmAdj(id,d){
+  const x=DB.cex[id];if(!x)return;
+  const v=bpmOk(Math.round((bpmOk(x.bpm)+d)/4)*4);x.bpm=v;save();
+  if(PAT.e&&PAT.e.id===id)PAT.e.bpm=v;
+  const V=$vis('bpmV');if(V)V.textContent=v;
+  const S=$vis('bpmS');if(S)S.textContent=bpmSub(v);
+  const M=$vis('bpmM'),P=$vis('bpmP');if(M)M.disabled=v<=BPM_LO;if(P)P.disabled=v>=BPM_HI;
 }
 function togglePlanEx(id){
   const p=DB.plan||{ex:[]},i=p.ex.indexOf(id);if(i>=0)p.ex.splice(i,1);else p.ex.push(id);
@@ -565,7 +608,7 @@ function cxNotesHTML(){
     '</div>'+
     '<p class="fn l2" style="padding:0 6px">Escríbelas como en la hoja, nota a nota, tomando el Do como 1. Neiro las lleva a tu voz. Toca una nota de la fila para cambiarla o borrarla.</p></div>'+
     '<div class="field"><label>Cómo se practica</label><div class="cxmodo" role="radiogroup">'+CX_M.map(([k,n,d])=>'<button class="cxm'+(CX.modo===k?' on':'')+'" role="radio" aria-checked="'+(CX.modo===k)+'" onclick="CX.modo=\''+k+'\';cxModo(this)"><span class="hl">'+n+'</span><span class="fn l2">'+d+'</span></button>').join('')+'</div></div>'+
-    '<div class="field"><label>Velocidad</label><div class="segc cxvel">'+CX_V.map(([v,n])=>'<button class="'+(CX.bpm===v?'on':'')+'" onclick="CX.bpm='+v+';segOn(this)">'+n+'</button>').join('')+'</div></div>'+
+    '<div class="field"><label>Velocidad</label><div class="segc cxvel">'+CX_V.map(([v,n])=>'<button class="'+(CX.bpm===v?'on':'')+'" onclick="CX.bpm='+v+';segOn(this)">'+n+'</button>').join('')+(CX_V.some(([v])=>v===CX.bpm)?'':'<button class="on" onclick="segOn(this)">♩ '+CX.bpm+'</button>')+'</div></div>'+
     '<button class="btn sec" id="cxPlay" onclick="cxListen()">'+ic('play',18)+'Escuchar '+(CX.modo==='lee'?'la primera línea':'una vuelta')+'</button>';
 }
 function cxSeqHTML(){

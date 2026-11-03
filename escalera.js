@@ -260,6 +260,7 @@ function gdTick(el){
   }
   if(st.vz)gdVoz(el,v,R);
   if(e.seq&&e.seq.length)pgTick(el,e,R,snd,pl);
+  if(exLee(e))lnavUI();
 }
 
 /* ═════ TU VOZ ENCIMA ═════

@@ -96,7 +96,8 @@ const EXC={
   enfriar:{n:'Sirenas descendentes',c:'enf',lv:0,pat:[12,0],glide:1,bpm:40,
     how:'Sirenas descendentes muy suaves con «u» o labios. Baja la intensidad: la voz debe quedar cómoda, no cansada.'}
 };
-const exBase=id=>EXC[id]||(DB.cex||{})[id]||null;
+/* cada ejercicio sabe su id (sin guardarlo): la lectura seguida lo usa para recordar en qué línea va */
+const exBase=id=>{const e=EXC[id]||(DB.cex||{})[id]||null;if(e&&e.id==null)try{Object.defineProperty(e,'id',{value:id,writable:true,configurable:true})}catch(x){}return e};
 /* ═════ NOTAS DE UN EJERCICIO PROPIO ═════
    seq: [[k, t], …] tal cual está en la hoja. k = semitonos desde el Do de la hoja (null = silencio); t = tiempos (½ corchea, 1 negra, 2 blanca, 4 redonda).
    De ahí sale lo que lee el piano y la guía: pat (solo las notas), dur (tiempos de cada nota), gap (silencio detrás) y lead (silencio antes de la primera). */
@@ -126,10 +127,13 @@ function seqApply(o){
   o.modo=o.modo==='lee'?'lee':'sube';
   o.lab=Array.isArray(o.lab)?o.lab.slice(0,60).map(x=>clean(x,12)):[];
   if(!o.lab.length)delete o.lab;
-  if(P.pat.length){o.pat=P.pat;o.dur=P.dur;o.gap=P.gap;if(P.lead)o.lead=P.lead;o.bpm=[72,92,112].includes(+o.bpm)?+o.bpm:92;
+  if(P.pat.length){o.pat=P.pat;o.dur=P.dur;o.gap=P.gap;if(P.lead)o.lead=P.lead;o.bpm=bpmOk(o.bpm);
     if(o.modo==='lee')o.lines=seqLines(q)}
   return o;
 }
+/* tempo de un ejercicio propio: negras por minuto, de 40 a 176 (Lenta 72 · Media 92 · Ágil 112 son atajos) */
+const BPM_LO=40,BPM_HI=176;
+const bpmOk=v=>{v=Math.round(+v);return Number.isFinite(v)&&v>0?Math.max(BPM_LO,Math.min(BPM_HI,v)):92};
 const exLee=e=>!!(e&&e.modo==='lee'&&e.lines&&e.lines.length);
 const seqBeats=q=>(q||[]).reduce((a,x)=>a+(+x[1]||0),0);
 const exName=id=>{const e=exBase(id);return e?e.n:id};
