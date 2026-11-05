@@ -1,8 +1,9 @@
 /* Neiro · funciona sin conexión: la app se guarda en el móvil; los datos y las grabaciones van aparte */
-const V='neiro-v23';
+const V='neiro-v24';
 const CORE=['./','index.html','core.js','data.js','audio.js','escalera.js','pentagrama.js','app.js','deshi.js','fonts/syne.woff2','manifest.webmanifest','icons/icon-192.png','icons/apple-touch-icon.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()))});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+// solo borra versiones viejas de Neiro: las hermanas viven en la misma dirección y comparten este almacén
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith('neiro-')&&k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   if(e.request.method!=='GET'||u.origin!==location.origin)return;
