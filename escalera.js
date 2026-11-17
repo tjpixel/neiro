@@ -234,7 +234,7 @@ function gdTick(el){
   if(P.top)gdSet(el,'top',inf.top,x=>P.top.textContent=x);
   /* lo que suena ahora, descontando el retardo del altavoz o de los auriculares */
   const R=gdPlaying(id)?PAT.round:null,c=AC;
-  const snd=R&&c?gdSound(R,c.currentTime-Math.min(.5,(c.outputLatency||0)+(c.baseLatency||0))):{cur:null,keys:[]};
+  const snd=R&&c?gdSound(R,c.currentTime-syncOut(c)):{cur:null,keys:[]};
   gdSet(el,'keys',snd.keys.join(','),()=>gdPaintKeys(el,snd.keys));
   const cur=snd.cur;
   if(v==='esc'){

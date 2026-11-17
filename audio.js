@@ -163,6 +163,7 @@ function patStart(e,tonic,cb,dir){
   PAT.ending=false;PAT.onEnd=null;PAT.on=true;PAT.e=e;PAT.tonic=tonic;PAT.dir=dir<0?-1:1;PAT.cb=cb||null;
   if(exLee(e)){if(PAT.ciId!==e.id||PAT.ci>=e.lines.length){PAT.ci=0;PAT.ciId=e.id}leeLoop(true)}else patLoop();
   if(vozWanted()&&e.id!=='cx_prev')vozStart();
+  if(typeof syncAsk==='function')syncAsk();
 }
 /* ═════ LECTURA SEGUIDA ═════
    Tono fijo y sin parar: la primera línea empieza con el acorde; después cada línea entra justo al acabar la anterior,
@@ -173,7 +174,8 @@ function leeLoop(first){
   const at=first?c.currentTime+.05:PAT.nextAt,pl=patPlan(e,PAT.ci,first);
   ROUTE=PAT.bus;const R=playRound(e,PAT.tonic,at,pl);ROUTE=null;if(!R)return;
   const swap=()=>{if(!PAT.on)return;PAT.round=R;if(PAT.cb)PAT.cb(PAT.tonic)};
-  if(first)swap();else{clearTimeout(PAT.t2);PAT.t2=setTimeout(swap,Math.max(0,(at-c.currentTime)*1000))}
+  /* la línea nueva pasa a la guía cuando de verdad se oye (con bluetooth, un poco después de programarla) */
+  if(first)swap();else{clearTimeout(PAT.t2);PAT.t2=setTimeout(swap,Math.max(0,(at-c.currentTime+syncOut(c))*1000))}
   PAT.nextAt=R.s+pl.tp+pl.D;
   PAT.timer=setTimeout(()=>{
     if(!PAT.on)return;
@@ -277,6 +279,7 @@ function micNote(stream,p){
     const label=t.label||'',kind=micKind(label);
     MIC.cur={id:s.deviceId||'',label,kind,chosen:!!(p&&(s.deviceId===p.id||label===p.label)),missing:!!(p&&s.deviceId!==p.id&&label!==p.label)};
   }catch(e){MIC.cur=null}
+  syncDetect();     // con el permiso del micro ya hay nombres: se sabe por dónde suena
   if(MIC.cur&&MIC.cur.kind==='bt'&&!MIC.warned&&typeof micWarn==='function'){MIC.warned=true;setTimeout(micWarn,300)}
   if(typeof micUI==='function')micUI();
 }
@@ -431,7 +434,7 @@ function vozTick(){
   const c=ac(),now=c.currentTime,wall=performance.now();
   /* el momento del piano al que corresponde lo que se canta ahora: el mismo reloj que usa la guía
      (retardo del altavoz o auriculares, del micro, media ventana de análisis y la mediana de 3 lecturas) */
-  const t=now-Math.min(.5,(c.outputLatency||0)+(c.baseLatency||0))-VOZ.lag-VOZ.an.fftSize/c.sampleRate/2-.04;
+  const t=now-syncVoz(c)-VOZ.an.fftSize/c.sampleRate/2-.04;
   let f=null;
   /* sin comprobar o con altavoz: no se escucha mientras suena el piano (lo confundiría con tu voz) */
   if(VOZ.ear==='ok'||now>=TUN_MUTE){VOZ.an.getFloatTimeDomainData(VOZ.buf);f=detectPitch(VOZ.buf,c.sampleRate)}
@@ -485,6 +488,115 @@ if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)navigator.med
   if(!VOZ.ear)return;vozSig().then(s=>{if(VOZ.sig&&s&&s!==VOZ.sig){VOZ.ear=null;VOZ.sig='';vozNote()}});
 });
 function vozNote(){if(typeof vozUI==='function')vozUI()}
+
+/* ═════ SINCRONÍA ═════
+   Lo que tarda el sonido en llegarte (y tu voz en llegar al micro) depende de por dónde suena:
+   con el altavoz o auriculares de cable es poco; con bluetooth puede pasar de 200 ms.
+   El navegador da una cifra (outputLatency) que con bluetooth en Android suele quedarse corta.
+   En Tú → Piano de referencia → Sincronía se mide una vez para cada salida y se guarda en cfg.sync:
+   { [salida]: {out: s, voz: {[tipo de micro]: s}, at: 'AAAA-MM-DD'} }
+   · out: desde que el piano toca una nota hasta que la oyes (lo usa la guía: escalera, teclado y pentagrama).
+   · voz: ida y vuelta, desde la nota hasta que el micro oye tu voz cantada a la vez (lo usa «Tu voz encima»).
+   Sin ajuste, se usa la cifra del navegador. */
+const SYNC={key:'',name:'',kind:''};
+const SYNC_N={spk:'Altavoz del móvil',wired:'Auriculares de cable',bt:'Auriculares bluetooth'};
+/* por dónde suena ahora: se deduce de los aparatos que da el navegador (necesita el permiso del micro para ver nombres) */
+async function syncDetect(){
+  let key='',name='',kind='';
+  try{
+    const L=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'||d.kind==='audiooutput')
+      .map(d=>(d.label||'').replace(/^(Default|Predeterminado|Communications) - /i,'').trim());
+    if(L.some(l=>l)){
+      const bt=L.find(l=>micKind(l)==='bt');
+      if(bt){kind='bt';key='bt:'+bt.toLowerCase();name=/^bluetooth\b/i.test(bt)?SYNC_N.bt:SYNC_N.bt+' · '+bt}
+      else if(L.some(l=>/wired|headphone|auricular|jack|usb audio|usb headset/i.test(l)||(/headset/i.test(l)&&!/earpiece/i.test(l)))){kind='wired';key='wired';name=SYNC_N.wired}
+      else{kind='spk';key='spk';name=SYNC_N.spk}
+    }
+  }catch(e){}
+  const ch=key!==SYNC.key;SYNC.key=key;SYNC.name=name;SYNC.kind=kind;
+  if(ch&&typeof syncUI==='function')syncUI();
+  return SYNC;
+}
+const syncSaved=()=>{const s=typeof DB!=='undefined'&&DB.cfg&&DB.cfg.sync;return s&&SYNC.key&&s[SYNC.key]||null};
+const syncAuto=c=>Math.min(.5,((c&&c.outputLatency)||0)+((c&&c.baseLatency)||0));
+/* retardo del sonido (s): el medido para esta salida o, si no hay, el del navegador */
+function syncOut(c){const s=syncSaved();return s&&s.out!=null?s.out:syncAuto(c)}
+/* retardo de ida y vuelta para «Tu voz encima» (s), según el micro que escucha ahora */
+function syncVoz(c){
+  const s=syncSaved(),k=(MIC.cur&&MIC.cur.kind)||'phone';
+  if(s&&s.voz&&s.voz[k]!=null)return s.voz[k];
+  return syncOut(c)+VOZ.lag;
+}
+if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>{syncDetect().then(()=>{if(PAT.on&&typeof syncAsk==='function')syncAsk()})});
+setTimeout(syncDetect,0);
+
+/* reloj: el momento de un toque (reloj de la página) pasado al reloj del sonido.
+   currentTime avanza a saltos (cada bloque de audio), así que se toma el borde de delante de los últimos 2 s */
+const CLK={s:[]};
+function clkSample(){const c=AC;if(!c)return;const p=performance.now();CLK.s.push([p,c.currentTime-p/1000]);while(CLK.s.length&&p-CLK.s[0][0]>2000)CLK.s.shift()}
+function perfToCtx(ms){clkSample();let o=-Infinity;for(const x of CLK.s)if(x[1]>o)o=x[1];return ms/1000+o}
+/* clic de madera, corto y seco, para medir */
+let CLKBUF=null;
+function syncClick(t,acc){
+  const c=ac(),o=master();if(!c||!o)return;
+  if(!CLKBUF){const n=Math.round(c.sampleRate*.03);CLKBUF=c.createBuffer(1,n,c.sampleRate);const d=CLKBUF.getChannelData(0);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,3)}
+  const s=c.createBufferSource(),bp=c.createBiquadFilter(),g=c.createGain();s.buffer=CLKBUF;bp.type='bandpass';bp.frequency.value=acc?2600:2000;bp.Q.value=1.4;g.gain.value=acc?.9:.7;
+  s.connect(bp);bp.connect(g);g.connect(o);s.start(t);
+  const os=c.createOscillator(),og=c.createGain();os.type='sine';os.frequency.value=acc?1760:1320;
+  og.gain.setValueAtTime(0,t);og.gain.linearRampToValueAtTime(.22,t+.002);og.gain.exponentialRampToValueAtTime(.001,t+.05);os.connect(og);og.connect(o);os.start(t);os.stop(t+.06);
+}
+/* serie de clics: los dos primeros son para coger el ritmo; devuelve sus momentos (reloj del sonido) */
+function syncClicks(n,iv){const c=ac();if(!c)return [];const t0=c.currentTime+.6,T=[];for(let i=0;i<n;i++){const t=t0+i*iv;T.push(t);syncClick(t,i<2)}return T}
+/* de cada clic (a partir del tercero), el primer momento de respuesta en su ventana; mediana y lo que se dispersan */
+function syncFit(T,R,lo,hi){
+  const d=[];
+  for(let i=2;i<T.length;i++){const r=R.find(x=>x-T[i]>=lo&&x-T[i]<=hi);if(r!=null)d.push(r-T[i])}
+  if(d.length<Math.max(5,Math.ceil((T.length-2)*.6)))return{err:'pocos',n:d.length};
+  const s=d.slice().sort((a,b)=>a-b),med=s[s.length>>1],mad=d.map(x=>Math.abs(x-med)).sort((a,b)=>a-b)[d.length>>1];
+  if(mad>.06)return{err:'irregular',n:d.length,mad};
+  return{v:med,n:d.length,mad};
+}
+/* medir la voz: suenan clics y dices «ta» con cada uno. Se escucha el micro muestra a muestra (sincronia-wk.js)
+   y se busca dónde empieza cada «ta». Con altavoz, el micro oye también el clic: da la misma cifra. */
+const SV={on:false,stream:null,src:null,node:null,sink:null,env:[],T:[],tm:0};
+async function syncVozRun(n,iv){
+  syncVozStop();tunerStop();vozClose();
+  const c=ac();if(!c||!c.audioWorklet)throw new Error('noworklet');
+  if(c.state!=='running'){try{await c.resume()}catch(e){}}
+  if(!SV.mod){SV.mod=c.audioWorklet.addModule('sincronia-wk.js')}
+  await SV.mod;
+  const stream=await micStream();
+  SV.stream=stream;SV.src=c.createMediaStreamSource(stream);SV.node=new AudioWorkletNode(c,'neiro-env');SV.sink=c.createGain();SV.sink.gain.value=0;
+  SV.env=[];SV.node.port.onmessage=ev=>{const {f,v}=ev.data;SV.env.push([f,v])};
+  SV.src.connect(SV.node);SV.node.connect(SV.sink);SV.sink.connect(c.destination);SV.on=true;
+  await new Promise(r=>setTimeout(r,250));      // un momento de silencio para medir el fondo
+  SV.T=syncClicks(n,iv);
+  const end=SV.T[SV.T.length-1]+iv;
+  await new Promise(r=>{SV.done=r;SV.tm=setTimeout(r,Math.max(0,(end-c.currentTime)*1000)+150)});
+  if(!SV.on)return null;
+  const res=syncOnsets(c.sampleRate);
+  syncVozStop();
+  if(res.err)return res;
+  return syncFit(SV.T,res.on,-.25,.7);
+}
+function syncVozStop(){
+  SV.on=false;clearTimeout(SV.tm);if(SV.done){const d=SV.done;SV.done=null;d()}
+  try{SV.src&&SV.src.disconnect();SV.node&&SV.node.disconnect();SV.sink&&SV.sink.disconnect()}catch(e){}
+  if(SV.stream)SV.stream.getTracks().forEach(t=>t.stop());SV.stream=null;SV.src=SV.node=SV.sink=null;
+}
+/* dónde empieza cada sonido: la envolvente cruza el umbral después de al menos 60 ms por debajo */
+function syncOnsets(sr){
+  const pts=[];for(const [f,v] of SV.env)for(let j=0;j<v.length;j++)pts.push([(f+j*16)/sr,v[j]]);
+  if(pts.length<100)return{err:'nomic'};
+  const s=pts.map(p=>p[1]).sort((a,b)=>a-b),fl=s[Math.floor(s.length*.2)],hi=s[Math.floor(s.length*.98)];
+  if(hi<.015||hi<fl*4)return{err:'silencio'};
+  const thr=fl+(hi-fl)*.3,low=fl+(hi-fl)*.15,on=[];let quiet=0,armed=false,last=-1;
+  for(const [t,v] of pts){
+    if(v<low){if(!armed){if(quiet===0)quiet=t;if(t-quiet>=.06)armed=true}}else quiet=0;
+    if(armed&&v>=thr&&t-last>.15){on.push(t);last=t;armed=false;quiet=0}
+  }
+  return{on};
+}
 
 /* ═════ REPRODUCIR GRABACIONES ═════ */
 const AURL={};

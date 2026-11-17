@@ -29,3 +29,8 @@ La web de pruebas fija el diseño, los flujos y el formato de datos. En SwiftUI 
 - En iPhone: `AVAudioSession` con categoría `.playAndRecord` y `setPreferredInput` para el micro elegido (`availableInputs`: integrado, auriculares de cable, bluetooth HFP, USB).
 - Con un micro bluetooth (HFP) los auriculares pasan a calidad de llamada también para lo que suena. Para cantar con AirPods y buena calidad: escuchar por bluetooth (A2DP, opción `.allowBluetoothA2DP`) y grabar con el micro integrado.
 - Abrir el micro sin procesar (modo `.measurement`): sin cancelación de eco, reducción de ruido ni control de volumen automático, como en la web.
+
+## Sincronía (neiro-v25)
+- En la web, Tú → Piano de referencia → Sincronía mide para cada salida (altavoz, cable, cada bluetooth) el retardo del sonido (toques con clics, afinado con la luz) y la ida y vuelta de la voz («ta» con cada clic). Se guarda en `cfg.sync`; sin ajuste se usa `outputLatency` del navegador.
+- En iPhone: `AVAudioSession.outputLatency` e `inputLatency` (más `ioBufferDuration`) dan cifras fiables con la ruta actual (`currentRoute`), así que el ajuste automático será bueno. Aun así conviene dejar la pantalla de ajuste: cada modelo de auriculares bluetooth añade su propio retardo.
+- Ojo: con el micro bluetooth abierto (HFP) el retardo de salida cambia respecto a A2DP. En iOS se puede medir por ruta.

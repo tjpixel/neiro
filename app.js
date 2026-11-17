@@ -943,6 +943,147 @@ function micUI(){
   if(SHS[SHS.length-1]===micSheet&&$('sheet').classList.contains('on'))drawSheet();
 }
 function micWarn(){if(SHS[SHS.length-1]===micSheet)return;toast('Micro bluetooth: suena peor · Tú → Micrófono',4000)}
+
+/* ═════ SINCRONÍA ═════
+   Tú → Piano de referencia → Sincronía. Dos medidas para la salida por la que suena ahora (altavoz, cable o cada bluetooth):
+   1 · Sonido y guía: suenan clics y tocas la pantalla con cada uno. Después, la luz parpadea con el clic y se afina con − / +.
+   2 · Tu voz: dices «ta» con cada clic; mide la ida y vuelta que usa «Tu voz encima».
+   El cálculo y los clics están en audio.js (SYNC). */
+const SYN={mode:'',T:[],taps:[],msg:'',ok:false,raf:0,iv:0,tm:0};
+const SYN_N=10,SYN_IV=.8,SYN_VIV=1;
+const msTxt=s=>Math.round(s*1000)+' ms';
+const synDate=d=>{const x=new Date(d+'T00:00:00');return x.getDate()+' '+MESES[x.getMonth()].slice(0,3)};
+const syncRowTxt=()=>syncSaved()?'Ajustada':'Automática';
+function syncSave(p){
+  if(!SYNC.key)return;
+  const all=Object.assign({},DB.cfg.sync||{}),o=Object.assign({},all[SYNC.key]||{},p,{at:T(),n:SYNC.name});
+  all[SYNC.key]=o;DB.cfg.sync=all;save();
+}
+function syncReset(){if(!SYNC.key||!DB.cfg.sync)return;const all=Object.assign({},DB.cfg.sync);delete all[SYNC.key];DB.cfg.sync=all;save();SYN.msg='';SYN.ok=false;drawSheet()}
+function syncSheet(){
+  const s=syncSaved(),c=AC||ac(),out=syncOut(c),busy=SYN.mode==='tap'||SYN.mode==='voz',known=!!SYNC.key;
+  const mk=(MIC.cur&&MIC.cur.kind)||(micPref()?micKind(micPref().label):'phone'),vz=s&&s.voz&&s.voz[mk];
+  const others=Object.keys(DB.cfg.sync||{}).filter(k=>k!==SYNC.key).map(k=>{const o=DB.cfg.sync[k];return esc(o.n||SYNC_N[k]||k)+' ('+msTxt(o.out||0)+')'});
+  const padTxt={'':'Toca «Medir con toques». Cuando empiecen los clics, toca aquí con cada uno',tap:'Escucha…',prev:'¿La luz va con el clic?',voz:'Di «ta» con cada clic'}[SYN.mode];
+  return{title:'Sincronía',body:'<div class="pad stack">'+
+    '<p class="sb l2 center" style="padding:0 10px">Con auriculares bluetooth el sonido llega tarde y la guía va por delante de lo que oyes. Mídelo una vez con cada auricular: Neiro lo recuerda.</p>'+
+    '<div class="group"><div class="cell" style="min-height:64px"><span class="ic '+(s?'tint':'gray')+'">'+ic('ear',17)+'</span><div class="cb"><div class="tt"><p class="bd" data-synname>'+(known?'Suena por: '+esc(SYNC.name):'Aún no sabe por dónde suena')+'</p>'+
+      '<p class="fn l2">'+(!known?'Necesita el permiso del micro para ver tus auriculares':s?'Ajustada el '+synDate(s.at):'Sin ajustar · el navegador dice '+msTxt(syncAuto(c)))+'</p></div></div></div></div>'+
+    (!known?'<button class="btn pri" onclick="syncPerm()">'+ic('mic',18)+'Dar permiso al micro</button>':
+    '<p class="ghead" style="padding-left:16px;margin-top:6px">1 · Sonido y guía</p>'+
+    '<button class="synpad'+(SYN.mode?' '+SYN.mode:'')+'" id="synPad" onpointerdown="syncTap(event)" aria-label="Toca con cada clic"'+(SYN.mode==='voz'?' disabled':'')+'>'+
+      '<span class="synring"></span><span class="syninner"><span class="fn" id="synPT">'+padTxt+'</span>'+
+      (SYN.mode==='tap'?'<span class="syndots" id="synDots">'+Array.from({length:SYN_N-2},(_,i)=>'<i'+(i<SYN.taps.length?' class="on"':'')+'></i>').join('')+'</span>':'')+'</span></button>'+
+    '<div class="group"><div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Retardo del sonido</p><p class="fn l2">'+(s&&s.out!=null?'Medido':'Del navegador')+'</p></div>'+
+      '<div class="row" style="gap:8px"><button class="mini" style="background:var(--fill2)" onclick="syncAdj(-.01)" aria-label="Menos retardo"'+(busy||out<=0?' disabled':'')+'>'+ic('minus',16,2.4)+'</button>'+
+      '<span class="t3 num" style="min-width:76px;text-align:center" id="synV" aria-live="polite">'+msTxt(out)+'</span>'+
+      '<button class="mini" style="background:var(--fill2)" onclick="syncAdj(.01)" aria-label="Más retardo"'+(busy||out>=.6?' disabled':'')+'>'+ic('plus',16,2.4)+'</button></div></div></div></div>'+
+    '<div class="row" style="gap:10px">'+
+      '<button class="btn '+(SYN.mode==='tap'?'sec':s&&s.out!=null?'sec':'pri')+'" style="flex:1" onclick="syncTapGo()"'+(SYN.mode==='voz'?' disabled':'')+'>'+(SYN.mode==='tap'?'Parar':'Medir con toques')+'</button>'+
+      '<button class="btn sec" style="flex:1" onclick="syncPrev()"'+(busy?' disabled':'')+'>'+(SYN.mode==='prev'?'Parar la luz':'Ver la luz')+'</button></div>'+
+    '<p class="fn l2" style="padding:0 16px">Con «Ver la luz» parpadea con cada clic. Si la luz va antes que el clic, toca +; si va después, −.</p>'+
+    (SYN.msg&&SYN.mode!=='voz'&&SYN.ok!=='voz'&&SYN.ok!=='vozerr'?'<div class="note'+(SYN.ok?' ok':'')+'">'+ic(SYN.ok?'check':'ear',18)+'<span>'+SYN.msg+'</span></div>':'')+
+    '<p class="ghead" style="padding-left:16px;margin-top:14px">2 · Tu voz</p>'+
+    '<p class="fn l2" style="padding:0 16px">Para que la línea naranja de «Tu voz encima» caiga en su sitio. Di un «ta» corto con cada clic, sin adelantarte, con el micro con el que cantas.</p>'+
+    '<div class="group"><div class="cell static"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Ida y vuelta</p><p class="fn l2 ell">Con el '+esc(MIC_N[mk]||MIC_N.phone).toLowerCase()+'</p></div>'+
+      '<span class="t3 num">'+(vz!=null?msTxt(vz):'<span class="l2">Sin medir</span>')+'</span></div></div></div>'+
+    '<button class="btn '+(vz!=null?'sec':'pri')+'" onclick="syncVozGo()"'+(busy?' disabled':'')+'>'+ic('mic',18)+(SYN.mode==='voz'?'Escuchando… di «ta» con cada clic':'Medir con tu voz')+'</button>'+
+    (SYN.msg&&(SYN.ok==='voz'||SYN.ok==='vozerr')?'<div class="note'+(SYN.ok==='voz'?' ok':'')+'">'+ic(SYN.ok==='voz'?'check':'ear',18)+'<span>'+SYN.msg+'</span></div>':'')+
+    (others.length?'<p class="fn l2" style="padding:6px 16px 0">También guardado: '+others.join(' · ')+'</p>':'')+
+    (s?'<button class="btn tx" onclick="syncReset()">Volver a lo automático con esta salida</button>':''))+
+    '</div>'};
+}
+function openSync(push){
+  const prev=onSheetClose;
+  SYN.msg='';SYN.ok=false;
+  openSheet(syncSheet,push);syncDetect().then(()=>{if(SHS[SHS.length-1]===syncSheet&&!SYN.mode)drawSheet()});
+  onSheetClose=()=>{syncHalt();onSheetClose=prev;
+    setTimeout(()=>{if(!$('sheet').classList.contains('on')&&onSheetClose===prev&&prev){onSheetClose=null;prev()}},0)};
+}
+/* para todo lo que esté midiendo o enseñando, y calla los clics que queden */
+function syncHalt(){
+  cancelAnimationFrame(SYN.raf);clearInterval(SYN.iv);clearTimeout(SYN.tm);SYN.raf=SYN.iv=SYN.tm=0;
+  if(SYN.mode==='voz')syncVozStop();
+  /* los clics ya programados van por la salida general: se suelta y se crea otra limpia */
+  if(SYN.mode&&MASTER){try{MASTER.disconnect()}catch(e){}MASTER=null}
+  SYN.mode='';SYN.T=[];SYN.taps=[];
+}
+function syncUI(){if(SHS[SHS.length-1]===syncSheet&&$('sheet').classList.contains('on')&&!SYN.mode)drawSheet()}
+async function syncPerm(){try{const st=await micStream();st.getTracks().forEach(t=>t.stop())}catch(e){toast('No se pudo abrir el micrófono');return}await syncDetect();drawSheet()}
+function syncAdj(d){
+  const c=AC||ac(),v=Math.max(0,Math.min(.6,Math.round((syncOut(c)+d)*100)/100));
+  syncSave({out:v});SYN.msg='';SYN.ok=false;
+  const V=$('synV');if(V)V.textContent=msTxt(v);
+  if(SYN.mode!=='prev')drawSheet();else{const p=$('sheet').querySelectorAll('.mini');p[0].disabled=v<=0;p[1].disabled=v>=.6}
+}
+/* 1 · toques: 10 clics (los dos primeros, para coger el ritmo) y se toca con cada uno */
+function syncTapGo(){
+  if(SYN.mode==='tap'){syncHalt();drawSheet();return}
+  syncHalt();patStop();vozCancel();
+  const c=ac();if(!c)return;
+  SYN.mode='tap';SYN.taps=[];SYN.msg='';SYN.ok=false;SYN.T=syncClicks(SYN_N,SYN_IV);drawSheet();
+  const loop=()=>{clkSample();const t=c.currentTime,P=$('synPT');if(P)P.textContent=t<SYN.T[2]-.35?(t<SYN.T[0]?'Escucha…':(t<SYN.T[1]?'1…':'2…')):'Toca con cada clic';SYN.raf=requestAnimationFrame(loop)};loop();
+  SYN.tm=setTimeout(syncTapEnd,Math.max(0,(SYN.T[SYN_N-1]+.7-c.currentTime)*1000));
+}
+function syncTap(ev){
+  if(SYN.mode!=='tap')return;
+  ev.preventDefault();
+  const t=perfToCtx(ev.timeStamp||performance.now());
+  if(t<SYN.T[2]-.3)return;                       // durante «1… 2…» aún no cuenta
+  SYN.taps.push(t);
+  const D=$('synDots');if(D){const n=D.children;for(let i=0;i<n.length;i++)n[i].classList.toggle('on',i<SYN.taps.length)}
+  const p=$('synPad');if(p){p.classList.remove('hit');void p.offsetWidth;p.classList.add('hit')}
+}
+function syncTapEnd(){
+  const T=SYN.T,R=SYN.taps.slice();syncHalt();
+  const r=syncFit(T,R,-.25,.55);
+  if(r.err){SYN.ok=false;SYN.msg=r.err==='irregular'?'Los toques salieron muy irregulares. Prueba otra vez, sin prisa, tocando justo cuando oyes cada clic.':'No llegaron bastantes toques. Prueba otra vez y toca el círculo con cada clic.';drawSheet();return}
+  const v=Math.max(0,Math.min(.6,Math.round(r.v*1000)/1000));
+  syncSave({out:v});SYN.ok=true;SYN.msg='Medido: '+msTxt(v)+'. Mira si la luz va con el clic y afínalo con − / + si hace falta.';
+  syncPrev(true);
+}
+/* luz con el clic: los clics siguen y el círculo se enciende cuando el clic se oye (según el retardo guardado) */
+function syncPrev(keep){
+  if(SYN.mode==='prev'&&!keep){syncHalt();drawSheet();return}
+  const msg=SYN.msg,ok=SYN.ok;syncHalt();patStop();vozCancel();SYN.msg=keep?msg:'';SYN.ok=keep?ok:false;
+  const c=ac();if(!c)return;
+  SYN.mode='prev';SYN.T=[c.currentTime+.4];syncClick(SYN.T[0]);drawSheet();
+  SYN.iv=setInterval(()=>{const l=SYN.T[SYN.T.length-1];if(l<c.currentTime+.6){const t=l+SYN_IV;SYN.T.push(t);syncClick(t);if(SYN.T.length>8)SYN.T.shift()}},100);
+  const loop=()=>{
+    const now=perfToCtx(performance.now()),o=syncOut(c),p=$('synPad');
+    let on=false;for(const t of SYN.T){const d=now-(t+o);if(d>=0&&d<.11)on=true}
+    if(p)p.classList.toggle('lit',on);
+    SYN.raf=requestAnimationFrame(loop);
+  };loop();
+}
+/* 2 · voz: 10 clics de un segundo y un «ta» con cada uno */
+async function syncVozGo(){
+  syncHalt();patStop();vozCancel();
+  SYN.mode='voz';SYN.msg='';SYN.ok=false;drawSheet();
+  let r=null;
+  try{r=await syncVozRun(SYN_N,SYN_VIV)}catch(e){r={err:e&&e.message==='noworklet'?'noworklet':'nomic'}}
+  if(SYN.mode!=='voz')return;                     // se cerró la hoja a medias
+  SYN.mode='';
+  if(!r){drawSheet();return}
+  if(r.err){
+    SYN.ok='vozerr';
+    SYN.msg={silencio:'No se oyó tu voz. Acércate al micro y di «ta» un poco más fuerte.',nomic:'No se pudo abrir el micrófono. Revisa el permiso del micro para Neiro.',noworklet:'Este navegador no deja medir la voz.'}[r.err]||'No salió claro. Di un «ta» corto con cada clic, en silencio entre uno y otro.';
+    drawSheet();return;
+  }
+  const mk=(MIC.cur&&MIC.cur.kind)||'phone',v=Math.max(0,Math.min(.9,Math.round(r.v*1000)/1000));
+  const s=syncSaved(),vz=Object.assign({},s&&s.voz||{},{[mk]:v});
+  syncSave({voz:vz});SYN.ok='voz';SYN.msg='Medido: '+msTxt(v)+' de ida y vuelta. La línea de tu voz ya lo tiene en cuenta.';
+  drawSheet();
+}
+/* con auriculares bluetooth sin ajustar, un aviso una vez (cuando suena el piano y no hay otro aviso a la vista) */
+function syncAsk(){
+  if(SYNC.kind!=='bt'||syncSaved()||(DB.cfg.syncAsk||[]).includes(SYNC.key))return;
+  clearTimeout(syncAsk.t);syncAsk.t=setTimeout(()=>{
+    if(!PAT.on||SYNC.kind!=='bt'||syncSaved()||$('toast').classList.contains('on'))return;
+    DB.cfg.syncAsk=(DB.cfg.syncAsk||[]).concat(SYNC.key);save();
+    toast('Bluetooth sin ajustar · Tú → Sincronía',4000);
+  },5000);
+}
 function setTunTol(k){DB.cfg.tun=Object.assign({},DB.cfg.tun,{tol:k});save();drawSheet()}
 async function tunerGo(){
   try{await tunerStart((r)=>tunerUpdate(r))}catch(e){toast(e&&e.message==='insecure'?'Abre Neiro desde su dirección web para usar el micro':'No se pudo abrir el micrófono');return false}
@@ -1030,7 +1171,7 @@ function meSheet(){
       '<p class="fn l2">En este móvil · sin cuenta</p><span class="pill" style="margin-top:8px;background:var(--amber-soft);color:var(--amber)">Cinturón '+C.belt[1].toLowerCase()+'</span></div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Práctica</p><div class="group">'+
       row('Días',daysTxt(DB.cfg.avail||[]),'openDays()')+row('Minutos al día',DB.cfg.mins+' min','openMins()')+row(goalsOf(p).length>1?'Objetivos':'Objetivo',goalsOf(p).length?(goalsOf(p).length>1?goalsOf(p).length+' elegidos':GOALS[goalsOf(p)[0]].n):'—','openGoals()')+row('Experiencia',p.lvl?LEVELS[p.lvl].n:'—','openPick(\'lvl\')')+row('Tu voz',(VOICES[p.voice]||VOICES.nose).n,'openPick(\'voice\')')+'</div></div>'+
-    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+row('Vista',PNO_VIEW[pianoCfg().view].n,'openPiano()')+row('Tu voz encima',pianoCfg().voz?'Sí':'No','openPiano()')+'</div></div>'+
+    '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Piano de referencia</p><div class="group">'+row('Sonido y velocidad',pnoTxt(),'openPiano()')+row('Vista',PNO_VIEW[pianoCfg().view].n,'openPiano()')+row('Tu voz encima',pianoCfg().voz?'Sí':'No','openPiano()')+row('Sincronía',syncRowTxt(),'openSync(true)')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Micrófono y afinador</p><div class="group">'+row('Micrófono',micRowTxt(),'openMic(true)')+row('Margen de «Afinado»',TUN_TOL[tunTolKey()].n+' · ±'+tunTol(),'openTunTol(true)')+'</div></div>'+
     '<div class="pad" style="margin-top:22px"><p class="ghead" style="padding-left:16px">Clases</p><div class="group">'+
       '<button class="cell" onclick="setTeacher(!DB.profile.teacher,true);openSheet(meSheet,true,true)"><div class="cb" style="padding-left:2px"><span class="tt bd">Voy a clase</span><span class="sw'+(p.teacher?' on':'')+'" role="switch" aria-checked="'+!!p.teacher+'"></span></div></button>'+
@@ -1065,7 +1206,7 @@ function openPiano(push){
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Vista</p>'+Object.keys(PNO_VIEW).map(k=>optBtn(PNO_VIEW[k],c.view===k,"setPno('view','"+k+"')")).join('')+
       '<p class="ghead" style="padding-left:16px;margin-top:6px">Tu voz</p><div class="group"><button class="cell" onclick="vozToggle()"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Dibujar tu voz encima</p><p class="fn l2">Con el micro, mientras suena el piano</p></div>'+
         '<span class="sw'+(c.voz?' on':'')+'" data-vozsw role="switch" aria-checked="'+c.voz+'"></span></div></button></div><p class="fn l2" style="padding:0 16px" data-vozh>'+vozHelp()+'</p>'+
-      '<div class="pcard" style="background:var(--sheet2);margin-top:6px">'+guideHTML('escala5')+'</div>'+
+      '<p class="ghead" style="padding-left:16px;margin-top:6px">Sincronía</p><div class="group"><button class="cell" onclick="openSync(true)"><div class="cb" style="padding-left:2px"><div class="tt"><p class="bd">Ajustar sincronía</p><p class="fn l2">Si la guía va por delante de lo que oyes · '+syncRowTxt().toLowerCase()+'</p></div>'+chev()+'</div></button></div>'+'<div class="pcard" style="background:var(--sheet2);margin-top:6px">'+guideHTML('escala5')+'</div>'+
       '<button class="btn '+(demo?'sec':'pri')+'" onclick="pnoDemo()">'+ic(demo?'pause':'play',18)+(demo?'Parar':'Probar con la escala de 5 notas')+'</button>'+
       '<p class="fn l2 center">Si el piano ya está sonando, el cambio se oye desde la vuelta siguiente.</p>'+'<p class="ghead" style="padding-left:16px;margin-top:18px">Aviso al acabar el paso</p>'+Object.keys(PNO_FIN).map(k=>optBtn(PNO_FIN[k],c.fin===k,"setFin('"+k+"')")).join('')+'<p class="fn l2" style="padding:0 16px">Toca uno para oírlo. Además, el móvil vibra una vez, corto.</p>'+'</div>'}},push);
   onSheetClose=()=>{if(PAT.on&&PAT.e&&PAT.e.demo)patStop();onSheetClose=prev};

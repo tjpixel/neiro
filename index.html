@@ -292,6 +292,18 @@ body.locked{position:fixed;left:0;right:0;overflow:hidden}
   font-size:15px;font-weight:600;max-width:calc(100% - 32px);text-align:center;transition:transform .3s cubic-bezier(.2,.9,.25,1);pointer-events:none}
 .toast.on{transform:translate(-50%,0)}
 .note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:18px;background:var(--amber-soft);color:var(--label);font-size:14px;line-height:19px}
+.note.ok{background:var(--tint-soft)}.note.ok svg{color:var(--ink)}
+/* sincronía: círculo para tocar con cada clic; con «Ver la luz» se enciende cuando se oye el clic */
+.synpad{position:relative;display:grid;place-items:center;width:196px;height:196px;margin:4px auto;border-radius:50%;background:var(--sheet2);touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;transition:background .06s,transform .06s}
+.synring{position:absolute;inset:0;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--sep)}
+.synpad.tap .synring{box-shadow:inset 0 0 0 2px var(--ink)}
+.syninner{display:flex;flex-direction:column;align-items:center;gap:12px;padding:0 28px;text-align:center;color:var(--label2)}
+.synpad.tap .syninner .fn{color:var(--label);font-weight:600;font-size:17px}
+.synpad.lit{background:var(--tint);transform:scale(1.03)}.synpad.lit .syninner{color:var(--on-tint)}
+.synpad.hit{animation:synhit .16s ease-out}
+@keyframes synhit{0%{transform:scale(.95);background:var(--tint-soft)}100%{transform:scale(1)}}
+.syndots{display:flex;gap:6px}.syndots i{width:8px;height:8px;border-radius:4px;background:var(--fill)}.syndots i.on{background:var(--ink)}
+.synpad[disabled]{opacity:.5}
 .note b{color:var(--amber)}
 .prose{padding:0 20px;font-size:16px;line-height:23px;color:var(--label)}
 .prose p+p{margin-top:12px}
@@ -401,7 +413,7 @@ b.up::before{top:-6px}b.lo::after{bottom:-6px}
 .gpg{touch-action:pan-y}
 .lnav{display:flex;align-items:center;gap:8px;padding:8px 0 0;border-top:.5px solid var(--sep)}
 .lnav .mini{width:36px;height:36px;background:var(--fill2)}
-.lnav .mini:disabled{opacity:.35}
+.lnav .mini:disabled,.sheet .mini:disabled{opacity:.35}
 .lnav .lnl{min-width:0;text-align:center}
 .lnav .lrep.on{background:var(--tint);color:var(--on-tint)}
 .gstaff{width:100%;height:auto;display:block;color:var(--label)}
